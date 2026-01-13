@@ -34,6 +34,11 @@ class CVPacket:
         """
         message = self.payload
 
+        #Signing
+        #The signature is computed over the uncompressed message payload.
+        if self.signed:
+            self.signature = 
+        
         # compression
         compressed_payload = zlib.compress(message)
         if len(compressed_payload) < len(message):
