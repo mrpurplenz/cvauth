@@ -43,6 +43,9 @@ class CVPacket:
         else:
             self.compressed = False
 
+        #Reset self.signed to make the presence of a signature authoritative for signing
+        self.signed = self.signature is not None
+        
         # flags byte
         flags = (int(self.signed) << 1) | int(self.compressed)
         flags_byte = flags.to_bytes(1, "big")
@@ -59,11 +62,13 @@ class CVPacket:
                 raise ValueError("Signature too long")
             out += len(self.signature).to_bytes(1, "big")
             out += self.signature
+            
         if self.compressed:
-            out += compressed_payload
+            payload_to_encode = compressed_payload
         else:
-            out += self.payload
-
+            payload_to_encode = self.payload
+        out += payload_to_encode
+        
         self.raw = bytes(out)
         return self.raw
 
