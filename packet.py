@@ -4,6 +4,7 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, ClassVar
 import zlib
+import crypto
 
 
 MAGIC_BYTES: ClassVar[bytes] = b"\x7a\x39"
@@ -19,8 +20,9 @@ class CVPacket:
     Represents a Chattervox packet object.
     """
     from_call: Optional[str]
-    payload: bytes
-
+    payload: bytes = None
+    compressed_payload: bytes = None
+    
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
@@ -31,18 +33,13 @@ class CVPacket:
     def encode(self) -> bytes:
         """
         Encode this packet into an AX.25 payload.
+        if you want the non encoded packet just request CVPacket.payload
         """
-        message = self.payload
 
-        #Signing
-        #The signature is computed over the uncompressed message payload.
-        if self.signed:
-            self.signature = 
         
         # compression
         compressed_payload = zlib.compress(message)
-        if len(compressed_payload) < len(message):
-            message = compressed_payload
+        if len(compressed_payload) < len(payload):
             self.compressed = True
         else:
             self.compressed = False
@@ -56,6 +53,8 @@ class CVPacket:
         out += self.version.to_bytes(1, "big")
         out += flags_byte
 
+        if self.signature is not None:
+            self.signed = True
         if self.signed:
             if self.signature is None:
                 raise ValueError("signed=True but no signature present")
@@ -63,8 +62,10 @@ class CVPacket:
                 raise ValueError("Signature too long")
             out += len(self.signature).to_bytes(1, "big")
             out += self.signature
-
-        out += message
+        if self.compressed:
+            out += payload
+        else:
+            out += compressed_payload
 
         self.raw = bytes(out)
         return self.raw
