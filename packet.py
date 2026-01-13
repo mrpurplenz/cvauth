@@ -5,14 +5,8 @@ from dataclasses import dataclass
 from typing import Optional, ClassVar
 import zlib
 
-
-
 MAGIC_BYTES: ClassVar[bytes] = b"\x7a\x39"
 PROTOCOL_VERSION: ClassVar[int] = 1
-
-class AuthFlag(Enum):
-    NOT_PRESENT = 0
-    PRESENT = 1
 
 @dataclass
 class CVPacket:
