@@ -2,7 +2,9 @@
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, ClassVar
+import zlib
+
 
 MAGIC_BYTES: ClassVar[bytes] = b"\x7a\x39"
 PROTOCOL_VERSION: ClassVar[int] = 1
@@ -70,6 +72,8 @@ class CVPacket:
         """
         if raw[:2] != MAGIC_BYTES:
             return cls(from_call=from_call, payload=raw, raw=raw)
+        if len(raw) < 4:
+            raise ValueError("Packet too short to be CVPacket")
 
         version = raw[2]
         flags = raw[3]
@@ -83,6 +87,8 @@ class CVPacket:
         if signed:
             sig_len = raw[idx]
             idx += 1
+            if idx + sig_len > len(raw):
+                raise ValueError("Invalid signature length")
             signature = raw[idx:idx + sig_len]
             idx += sig_len
 
