@@ -4,7 +4,7 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, ClassVar
 import zlib
-import crypto
+
 
 
 MAGIC_BYTES: ClassVar[bytes] = b"\x7a\x39"
@@ -38,8 +38,9 @@ class CVPacket:
 
         
         # compression
-        compressed_payload = zlib.compress(message)
-        if len(compressed_payload) < len(payload):
+        compressed_payload = zlib.compress(self.payload)
+        if len(compressed_payload) < len(self.payload):
+            self.compressed_payload = compressed_payload
             self.compressed = True
         else:
             self.compressed = False
@@ -63,9 +64,9 @@ class CVPacket:
             out += len(self.signature).to_bytes(1, "big")
             out += self.signature
         if self.compressed:
-            out += payload
-        else:
             out += compressed_payload
+        else:
+            out += payload
 
         self.raw = bytes(out)
         return self.raw
