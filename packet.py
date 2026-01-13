@@ -21,8 +21,7 @@ class CVPacket:
     """
     from_call: Optional[str]
     payload: bytes = None
-    compressed_payload: bytes = None
-    
+        
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
@@ -40,7 +39,6 @@ class CVPacket:
         # compression
         compressed_payload = zlib.compress(self.payload)
         if len(compressed_payload) < len(self.payload):
-            self.compressed_payload = compressed_payload
             self.compressed = True
         else:
             self.compressed = False
@@ -54,8 +52,6 @@ class CVPacket:
         out += self.version.to_bytes(1, "big")
         out += flags_byte
 
-        if self.signature is not None:
-            self.signed = True
         if self.signed:
             if self.signature is None:
                 raise ValueError("signed=True but no signature present")
@@ -66,7 +62,7 @@ class CVPacket:
         if self.compressed:
             out += compressed_payload
         else:
-            out += payload
+            out += self.payload
 
         self.raw = bytes(out)
         return self.raw
