@@ -14,8 +14,7 @@ class CVPacket:
     Represents a Chattervox packet object.
     """
     from_call: Optional[str]
-    payload: bytes = None
-        
+    payload: bytes = None #This is the binary message content uncompressed
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
