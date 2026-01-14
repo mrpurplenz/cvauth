@@ -31,6 +31,31 @@ class AuthResult:
     signer: Optional[str]
     reason: Optional[str]
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+
+def sign_packet(
+    packet: CVPacket,
+    private_key: Ed25519PrivateKey,
+) -> None:
+    """
+    Sign the packet payload and attach the signature.
+    """
+
+    if packet.payload is None:
+        raise ValueError("Cannot sign packet with no payload")
+
+    signature = crypto.sign(
+        payload=packet.payload,
+        private_key=private_key,
+    )
+
+    packet.signature = signature
+    packet.signed = True
+
+
+
+
 
 def verify_packet(
     packet: CVPacket,
