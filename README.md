@@ -33,9 +33,23 @@ This project is in early development.
 The initial focus is on defining clean APIs and extracting
 existing, working code from my Paracon-auth fork into a standalone library.
 
+## Public API
+
+CVAuth guarantees stability for the following symbols:
+
+```python
+from cvauth import (
+    CVPacket,
+    sign_packet,
+    verify_packet,
+    AuthType,
+    AuthResult,
+    PublicKeyProvider,
+)
+
 ## Roadmap
 
-- [ ] Define public API surface
+- [*] Define public API surface
 - [ ] Define config and key layout
 - [ ] Extract signing and verification logic
 - [ ] Implement CLI wrapper
