@@ -45,38 +45,38 @@ class TestAuthRoundTrip(unittest.TestCase):
         self.assertEqual(result.auth_type, AuthType.VALID)
         self.assertEqual(result.signer, self.callsign)
 
-def test_encode_decode_verify(self):
-    pkt = CVPacket(
-        from_call=self.callsign,
-        payload=self.payload,
-    )
+    def test_encode_decode_verify(self):
+        pkt = CVPacket(
+            from_call=self.callsign,
+            payload=self.payload,
+        )
 
-    sign_packet(pkt, self.private_key)
-    raw = pkt.encode()
+        sign_packet(pkt, self.private_key)
+        raw = pkt.encode()
 
-    decoded = CVPacket.decode(raw, from_call=self.callsign)
-    result = verify_packet(decoded, self.keyring)
+        decoded = CVPacket.decode(raw, from_call=self.callsign)
+        result = verify_packet(decoded, self.keyring)
 
-    self.assertEqual(result.auth_type, AuthType.VALID)
+        self.assertEqual(result.auth_type, AuthType.VALID)
 
-def test_wrong_key_fails(self):
-    other_key = Ed25519PrivateKey.generate()
-    other_pub = other_key.public_key()
+    def test_wrong_key_fails(self):
+        other_key = Ed25519PrivateKey.generate()
+        other_pub = other_key.public_key()
 
-    pkt = CVPacket(from_call=self.callsign, payload=self.payload)
-    sign_packet(pkt, other_key)
+        pkt = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(pkt, other_key)
 
-    result = verify_packet(pkt, self.keyring)
-    self.assertEqual(result.auth_type, AuthType.INVALID)
+        result = verify_packet(pkt, self.keyring)
+        self.assertEqual(result.auth_type, AuthType.INVALID)
 
-def test_missing_key(self):
-    pkt = CVPacket(from_call=self.callsign, payload=self.payload)
-    sign_packet(pkt, self.private_key)
+    def test_missing_key(self):
+        pkt = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(pkt, self.private_key)
 
-    empty_keyring = DictKeyring({})
-    result = verify_packet(pkt, empty_keyring)
+        empty_keyring = DictKeyring({})
+        result = verify_packet(pkt, empty_keyring)
 
-    self.assertEqual(result.auth_type, AuthType.KEYNOTFOUND)
+        self.assertEqual(result.auth_type, AuthType.KEYNOTFOUND)
 
 
 
