@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtualenv
+.venv/
+venv/
+
+# IDE
+.spyderproject
+.spyproject
+.vscode/
+
+# OS
+.DS_Store

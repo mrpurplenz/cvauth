@@ -1,3 +1,11 @@
+"""
+Public API (v0.1)
+- sign_packet
+- verify_packet
+- AuthType
+- AuthResult
+"""
+
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Protocol
