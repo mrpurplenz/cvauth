@@ -6,6 +6,7 @@ class TestPublicAPI(unittest.TestCase):
 
     def test_public_api_imports(self):
         from cvauth import (
+            CVAuth,
             CVPacket,
             sign_packet,
             verify_packet,
@@ -15,6 +16,7 @@ class TestPublicAPI(unittest.TestCase):
             __version__,
         )
 
+        self.assertIsNotNone(CVAuth)
         self.assertIsNotNone(CVPacket)
         self.assertIsNotNone(sign_packet)
         self.assertIsNotNone(verify_packet)
