@@ -11,6 +11,18 @@ from platformdirs import user_config_dir
 APP_NAME = "cvauth"
 CONFIG_FILENAME = "cvauth.toml"
 
+DEFAULT_CONFIG = {
+    "identity": {
+        "callsign": "",
+    },
+    "crypto": {
+        "key_type": "ed25519",
+    },
+    "paths": {
+        "private_key": "private.key",
+        "public_key": "public.key",
+    },
+}
 
 class ConfigError(RuntimeError):
     """Configuration is missing or invalid."""
@@ -56,6 +68,17 @@ class CVAuthConfig:
             return path
         return (self.base_path / path).resolve()
 
+def ensure_config() -> Path:
+    cfg_dir = config_dir()
+    cfg_file = config_path()
+
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+
+    if not cfg_file.exists():
+        with cfg_file.open("wb") as f:
+            tomli_w.dump(DEFAULT_CONFIG, f)
+
+    return cfg_file
 
 def load_config(path: Optional[Path] = None) -> CVAuthConfig:
     """
