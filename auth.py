@@ -22,8 +22,8 @@ class AuthType(Enum):
     status for display in application.
     """
     UNKNOWN     = "UK"  # Unknown or not yet determined
-    NOTSIGNED   = "NS"  # No signature present 
-    VALID       = "SV"  # Signature present and verified 
+    NOTSIGNED   = "NS"  # No signature present
+    VALID       = "SV"  # Signature present and verified
     KEYNOTFOUND = "NK"  # No public key available
     INVALID     = "IV"  # Signature invalid
 
@@ -83,7 +83,7 @@ def verify_packet(
         return AuthResult(
             auth_type=AuthType.KEYNOTFOUND,
             signer=None,
-            reason="No callsign available to locate public key",
+            reason="No callsign available to locate public key, callsign should be available from the ax25 packet",
         )
 
     # Look up public key

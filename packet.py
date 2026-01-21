@@ -13,8 +13,8 @@ class CVPacket:
     """
     Represents a Chattervox packet object.
     """
-    from_call: Optional[str]
-    payload: bytes = None #This is the binary message content uncompressed
+    from_call: Optional[str] = None
+    payload: bytes = None
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
@@ -24,11 +24,28 @@ class CVPacket:
     
     def encode(self) -> bytes:
         """
-        Encode this packet into an AX.25 payload.
+        Encode this payload into a Chattervox Signed AX.25 payload.
         if you want the non encoded packet just request CVPacket.payload
+
+
+        Assemble the packet payload into bytes for AX.25 transmission.
+
+
+        Returns:
+            bytes: Complete payload including header, optional signature, and message.
+
+        Payload layout:
+            - [0x0000] 16 bits  Magic Header b'x7a39'
+            - [0x0002] 8 bits   Version Byte b'x01' for version 1
+            - [0x0003] 6 bits   Reserved/Unused
+            - [0x0003] 1 bit    Digital Signature Flag 
+            - [0x0003] 1 bit    Compression Flag
+            - [0x0004] [opt] 8 bits Signature Length
+            - [0x0005] [opt] Signature (Signature Length bytes) base64 encoded
+            - [rest]   Message (raw or compressed bytes) base64 encoded
         """
 
-        
+
         # compression
         compressed_payload = zlib.compress(self.payload)
         if len(compressed_payload) < len(self.payload):

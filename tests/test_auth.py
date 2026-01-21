@@ -1,3 +1,5 @@
+import unittest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cvauth.packet import CVPacket
 from cvauth.auth import sign_packet, verify_packet, AuthType
 from cvauth.crypto import sign, verify
@@ -9,12 +11,6 @@ class DictKeyring:
     def get_public_key(self, callsign):
         return self.mapping.get(callsign)
 
-import unittest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-from cvauth.packet import CVPacket
-from cvauth.auth import sign_packet, verify_packet, AuthType
-
 
 class TestAuthRoundTrip(unittest.TestCase):
 
@@ -23,7 +19,7 @@ class TestAuthRoundTrip(unittest.TestCase):
         self.public_key = self.private_key.public_key()
 
         self.callsign = "ZL1TEST"
-        self.payload = b"Hello AX.25"
+        self.payload = b"Hello AX.25. This will want to be able to compress 000000000000000000000"
 
         self.keyring = DictKeyring({
             self.callsign: self.public_key
@@ -78,5 +74,32 @@ class TestAuthRoundTrip(unittest.TestCase):
 
         self.assertEqual(result.auth_type, AuthType.KEYNOTFOUND)
 
+    def test_signed_packet_roundtrip(self):
+        # Arrange
+        payload = self.payload
+        private_key = self.private_key
+        public_key = self.public_key
+        test_from_call = self.callsign
 
+        # Act: create and sign
+        pkt = CVPacket(from_call=test_from_call, payload=payload)
+        sign_packet(pkt,private_key)
+
+        encoded = pkt.encode()
+
+        # Act: decode and verify
+        decoded = CVPacket.decode(encoded,from_call = test_from_call)
+        keyring = self.keyring
+        verification_result = verify_packet(decoded, keyring)
+
+        assert verification_result.signer == test_from_call, \
+            f"Expected signer {test_from_call} but got {verification_result.signer}. Reason: {verification_result.reason}"
+
+
+        assert verification_result.auth_type == AuthType.VALID, \
+            f"Expected VALID but got {verification_result.auth_type}. Reason: {verification_result.reason}"
+
+
+        # Assert payload integrity
+        assert decoded.payload == payload
 
