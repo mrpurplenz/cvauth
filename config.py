@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import tomllib  # Python 3.11+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python <=3.10
+import tomli_w
 from typing import Optional
-
+import os
 from platformdirs import user_config_dir
 
 
@@ -12,17 +16,24 @@ APP_NAME = "cvauth"
 CONFIG_FILENAME = "cvauth.toml"
 
 DEFAULT_CONFIG = {
-    "identity": {
-        "callsign": "",
-    },
-    "crypto": {
-        "key_type": "ed25519",
-    },
-    "paths": {
-        "private_key": "private.key",
-        "public_key": "public.key",
-    },
+    "cvauth": {
+        "identity": {
+            "callsign": "",
+        },
+        "crypto": {
+            "key_type": "ed25519",
+        },
+        "paths": {
+            "private_key": "private.key",
+            "public_key": "public.key",
+        },
+        "behaviour": {
+            "allow_unsigned": True,
+            "allow_invalid_signatures": True,
+        },
+    }
 }
+
 
 class ConfigError(RuntimeError):
     """Configuration is missing or invalid."""
@@ -33,6 +44,10 @@ def default_config_path() -> Path:
     Return the default path for cvauth.toml.
     Does NOT create it.
     """
+    override = os.environ.get("CVAUTH_CONFIG_DIR")
+    if override:
+        return Path(override) / CONFIG_FILENAME
+
     config_dir = Path(user_config_dir(APP_NAME))
     return config_dir / CONFIG_FILENAME
 
@@ -69,8 +84,12 @@ class CVAuthConfig:
         return (self.base_path / path).resolve()
 
 def ensure_config() -> Path:
-    cfg_dir = config_dir()
-    cfg_file = config_path()
+    """
+    Ensure that the default config directory and cvauth.toml exist.
+    Returns the path to cvauth.toml.
+    """
+    cfg_file = default_config_path()
+    cfg_dir = cfg_file.parent
 
     cfg_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,6 +98,7 @@ def ensure_config() -> Path:
             tomli_w.dump(DEFAULT_CONFIG, f)
 
     return cfg_file
+
 
 def load_config(path: Optional[Path] = None) -> CVAuthConfig:
     """
@@ -95,6 +115,12 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
         data = tomllib.loads(path.read_text())
     except Exception as e:
         raise ConfigError(f"Failed to parse config: {e}") from e
+
+    try:
+        data = data["cvauth"]
+    except KeyError:
+        raise ConfigError("Missing [cvauth] section in config")
+
 
     try:
         identity = IdentityConfig(
@@ -122,3 +148,8 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
         behaviour=behaviour,
         base_path=path.parent,
     )
+
+def get_config_path(path: Optional[Path] = None) -> Path:
+    if path is not None:
+        return path
+    return default_config_path()

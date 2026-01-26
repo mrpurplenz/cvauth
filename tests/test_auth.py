@@ -3,6 +3,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cvauth.packet import CVPacket
 from cvauth.auth import sign_packet, verify_packet, AuthType
 from cvauth.crypto import sign, verify
+from cvauth.config import ensure_config, get_config_path
+import os
+import zlib
+import tempfile
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python <=3.10
+import tomli_w
+
 
 class DictKeyring:
     def __init__(self, mapping):
@@ -103,3 +113,64 @@ class TestAuthRoundTrip(unittest.TestCase):
         # Assert payload integrity
         assert decoded.payload == payload
 
+class TestCompression(unittest.TestCase):
+
+    def test_roundtrip_compression(self):
+        original = b"Hello AX.25 world. " * 10  # repetitive to see compression
+        compressed = zlib.compress(original)
+        decompressed = zlib.decompress(compressed)
+
+        # Assert that decompression returns original data
+        self.assertEqual(decompressed, original)
+
+    def test_packet_compression_roundtrip(self):
+        from cvauth.packet import CVPacket
+
+        payload = b"AX.25 payload that needs compressing" * 200
+        pkt = CVPacket(from_call="ZL1TEST", payload=payload)
+        encoded = pkt.encode()
+        decoded = CVPacket.decode(encoded)
+
+        #Setup achied compression
+        self.assertTrue(pkt.compressed, "packet payload was not compressed")
+
+        # payload integrity
+        self.assertEqual(decoded.payload, payload)
+
+
+class TestConfig(unittest.TestCase):
+
+    def test_config_is_created(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["CVAUTH_CONFIG_DIR"] = tmp
+
+            path = ensure_config()
+
+            self.assertTrue(path.exists())
+            self.assertEqual(path.name, "cvauth.toml")
+
+    def test_config_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["CVAUTH_CONFIG_DIR"] = tmp
+
+            path1 = ensure_config()
+            mtime1 = path1.stat().st_mtime
+
+            path2 = ensure_config()
+            mtime2 = path2.stat().st_mtime
+
+            self.assertEqual(path1, path2)
+            self.assertEqual(mtime1, mtime2)
+
+    def test_config_contents_have_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["CVAUTH_CONFIG_DIR"] = tmp
+
+            path = ensure_config()
+            text = path.read_text()
+            data = tomllib.loads(text)
+
+            self.assertIn("cvauth", data)
+            self.assertIn("identity", data["cvauth"])
+            self.assertEqual(data["cvauth"]["identity"]["callsign"], "")
+            

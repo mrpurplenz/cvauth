@@ -9,12 +9,12 @@ Public API (v0.1)
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Protocol
-
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 from .packet import CVPacket
 from . import crypto
-
+from pathlib import Path
 
 class AuthType(Enum):
     """
@@ -33,14 +33,63 @@ class PublicKeyProvider(Protocol):
         ...
 
 
+def generate_keypair(key_type: str):
+    if key_type != "ed25519":
+        raise ValueError(f"Unsupported key type: {key_type}")
+
+    priv = Ed25519PrivateKey.generate()
+    pub = priv.public_key()
+    return priv, pub
+
+
+def serialize_private_key(priv) -> bytes:
+    return priv.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
+def serialize_public_key(pub) -> bytes:
+    return pub.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def write_private_key(path: Path, priv: Ed25519PrivateKey) -> None:
+    path.write_bytes(serialize_private_key(priv))
+
+
+def write_public_key(path: Path, pub: Ed25519PublicKey) -> None:
+    path.write_bytes(serialize_public_key(pub))
+
+def load_private_key(path: Path) -> Ed25519PrivateKey:
+    data = path.read_bytes()
+    key = serialization.load_pem_private_key(data, password=None)
+
+    if not isinstance(key, Ed25519PrivateKey):
+        raise TypeError("Not an Ed25519 private key")
+
+    return key
+
+
+def load_public_key(path: Path) -> Ed25519PublicKey:
+    data = path.read_bytes()
+    key = serialization.load_pem_public_key(data)
+
+    if not isinstance(key, Ed25519PublicKey):
+        raise TypeError("Not an Ed25519 public key")
+
+    return key
+
+
+
 @dataclass
 class AuthResult:
     auth_type: AuthType
     signer: Optional[str]
     reason: Optional[str]
-
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 
 def sign_packet(
     packet: CVPacket,
@@ -60,10 +109,6 @@ def sign_packet(
 
     packet.signature = signature
     packet.signed = True
-
-
-
-
 
 def verify_packet(
     packet: CVPacket,
