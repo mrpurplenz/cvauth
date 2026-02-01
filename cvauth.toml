@@ -1,21 +1,22 @@
 # CVAuth configuration file
 # Version 1 — stable
 
-[identity]
-callsign = "ZL1ABC"
+[cvauth.identity]
+callsign = ""
+ssid = ""
 
-[keys]
-# Paths are absolute or relative to this file
+[cvauth.keys]
 private_key = "keys/private.pem"
 public_key  = "keys/public.pem"
 
-[keystore]
-# Directory containing trusted public keys
+[cvauth.keystore]
 trusted_keys_dir = "trusted_keys"
 
-[behaviour]
-# If true, unsigned packets are still accepted
+[cvauth.behaviour]
 allow_unsigned = true
-
-# If true, packets with invalid signatures are marked but not rejected
 allow_invalid_signatures = true
+
+[cvauth.config_location]
+config_path = ""
+
+

@@ -1,6 +1,40 @@
 # cvauth/cli.py
 
 import argparse
+import sys
+
+from .config import ensure_config
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    """
+    Initialise CVAuth configuration.
+    Idempotent by design.
+    """
+    path = ensure_config()
+    print(f"CVAuth config initialised at {path}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="cvauth",
+        description="CVAuth configuration tool",
+    )
+
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_init = sub.add_parser("init", help="Initialise CVAuth configuration")
+    p_init.set_defaults(func=cmd_init)
+
+    args = parser.parse_args(argv)
+
+    args.func(args)
+    return 0
+
+# cvauth/cli.py
+
+"""
+import argparse
 from pathlib import Path
 import argparse
 import sys
@@ -68,3 +102,4 @@ def main(argv: list[str] | None = None) -> int:
     args.func(args)
     return 0
 
+"""

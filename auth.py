@@ -42,6 +42,33 @@ def generate_keypair(key_type: str):
     return priv, pub
 
 
+def generate_and_save_keypair(private_path: Path, public_path: Path, key_type="ed25519"):
+    """
+    Generate a keypair of the given type and save to disk.
+    Overwrites files if they exist.
+    """
+    # 1. Generate keypair in memory
+    priv, pub = generate_keypair(key_type)
+
+    # Ensure directories exist
+    private_path.parent.mkdir(parents=True, exist_ok=True)
+    public_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 2. Serialize and write private key
+    with private_path.open("wb") as f:
+        f.write(
+            serialize_private_key(priv)
+        )
+
+    # 3. Serialize and write public key
+    with public_path.open("wb") as f:
+        f.write(
+            serialize_public_key(pub)
+        )
+
+    return private_path, public_path
+
+
 def serialize_private_key(priv) -> bytes:
     return priv.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -65,6 +92,13 @@ def write_public_key(path: Path, pub: Ed25519PublicKey) -> None:
     path.write_bytes(serialize_public_key(pub))
 
 def load_private_key(path: Path) -> Ed25519PrivateKey:
+
+    if path is None:
+        raise ValueError("Private key path is None")
+
+    if not path.exists():
+        raise FileNotFoundError(f"Private key not found: {path}")
+
     data = path.read_bytes()
     key = serialization.load_pem_private_key(data, password=None)
 
