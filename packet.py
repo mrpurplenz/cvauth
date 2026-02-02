@@ -20,8 +20,23 @@ class CVPacket:
     compressed: bool = False
     signature: Optional[bytes] = None
 
+    #generally created after encoding or recieving
     raw: Optional[bytes] = None
-    
+
+    def __post_init__(self):
+        if self.payload is None:
+            return
+
+        if isinstance(self.payload, (bytes, bytearray, memoryview)):
+            self.payload = bytes(self.payload)
+        else:
+            raise TypeError(
+                f"CVPacket.payload must be bytes, not {type(self.payload).__name__}"
+            )
+
+
+
+
     def encode(self) -> bytes:
         """
         Encode this payload into a Chattervox Signed AX.25 payload.
@@ -41,13 +56,14 @@ class CVPacket:
             - [0x0003] 1 bit    Digital Signature Flag 
             - [0x0003] 1 bit    Compression Flag
             - [0x0004] [opt] 8 bits Signature Length
-            - [0x0005] [opt] Signature (Signature Length bytes) base64 encoded
-            - [rest]   Message (raw or compressed bytes) base64 encoded
+            - [0x0005] [opt] Signature (Signature Length bytes)
+            - [rest]   Message (raw or compressed bytes)
         """
 
 
         # compression
-        compressed_payload = zlib.compress(self.payload)
+        bytes_payload = self.payload
+        compressed_payload = zlib.compress(bytes_payload)
         if len(compressed_payload) < len(self.payload):
             self.compressed = True
         else:

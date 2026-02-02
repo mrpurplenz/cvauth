@@ -36,8 +36,8 @@ except ModuleNotFoundError:
 import tomli_w
 
 from .config import ensure_config, load_config, update_config_value
-from .auth import load_private_key, generate_and_save_keypair
-from .auth import verify_packet, AuthType
+from .auth import load_private_key, generate_and_save_keypair, ensure_bytes
+from .auth import sign_packet, verify_packet, AuthType, AuthResult
 from .packet import CVPacket
 
 import re
@@ -279,9 +279,18 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
         "signed": bool,       		# True if the packet had a signature
         "valid": bool,        		# True if the signature is valid
         "signer": str|None,   		# Callsign of signer if known
+        "call_from": str,               # Call sign of UI packer sender
         "sanitised_payload": bytes      # Internal payload of the CVAuth packet
       }
     """
+    AUTH_DISPLAY = {
+        AuthType.VALID:       "Signature verified",
+        AuthType.NOTSIGNED:   "Not signed",
+        AuthType.KEYNOTFOUND: "Public key not found",
+        AuthType.INVALID:     "Invalid signature",
+        AuthType.UNKNOWN:     "Unknown",
+    }
+
     try:
         # Wrap the raw bytes into a CVPacket
         packet = CVPacket.decode(raw=received_payload, from_call=call_from)
@@ -289,9 +298,11 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
         # Not a CVAuth packet at all
         text = payload.decode("utf-8", "replace")
         return {
-            "signed": False,
-            "valid": False,
+            "auth_status": AuthType.UNKNOWN,
+            "authentic": "Unknown packet format",
+            "reason": None,
             "signer": None,
+            "call_from": call_from,
             "sanitised_payload": text.strip(),
         }
 
@@ -303,34 +314,66 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
     # Map AuthType to signed/valid
     signed = result.auth_type != AuthType.NOTSIGNED and result.auth_type != AuthType.UNKNOWN
     valid = result.auth_type == AuthType.VALID
+    authenticity = AUTH_DISPLAY[result.auth_type]
 
     return {
-        "signed": signed,
-        "valid": valid,
+        "auth_status": result.auth_type,
+        "authentic": authenticity,
+        "reason": result.reason if result.reason else None,
         "signer": result.signer if signed else None,
+        "call_from": call_from,
         "sanitised_payload": packet.payload,
     }
 
 
-def make_reflector_message(result):
+def make_reflector_message(result, callsign, private_key):
     """
     Construct a *new* reflector-originated message.
     """
-    if not result["signed"]:
+    if result["auth_status"] == AuthType.VALID:
         return (
-            f"CVAuth reflector: received UNSIGNED message: "
-            f"{result['sanitised_payload']}"
+            f"CVAuth reflector: An authenticated message was received from {result['signer']}"
+            f"which was {result['sanitised_payload']}"
         )
 
-    if not result["valid"]:
+    if result["auth_status"] == AuthType.NOTSIGNED:
+        #return (
+        #    f"CVAuth reflector: Received an UNSIGNED message from {result['call_from']} "
+        #    f" as follows: {result['sanitised_payload']}"
+        #)
+        message_to_sign = (
+            f"CVAuth reflector: Received an UNSIGNED message from {result['call_from']} "
+            f" as follows: {result['sanitised_payload']} This message has been signed by me and returned to you, hense the bytes at the front of the message"
+        )
+        pkt = CVPacket(
+            from_call=callsign,
+            payload=ensure_bytes(message_to_sign),
+        )
+        sign_packet(pkt, private_key)
+        return pkt.encode()
+
+    if result["auth_status"] == AuthType.KEYNOTFOUND:
+        return (
+            f"CVAuth reflector: Key not found to authenticate the SIGNED message from {result['signer']} "
+            f" as follows: {result['sanitised_payload']}"
+        )
+
+    if result["auth_status"] == AuthType.INVALID:
         return (
             f"CVAuth reflector: INVALID signature from "
             f"{result['signer']}"
         )
 
+    if result["auth_status"] == AuthType.UNKNOWN:
+        return (
+            f"CVAuth reflector: Unknown authentication status for message from "
+            f"{result['call_from']} as follows: {result['sanitised_payload']}"
+        )
+
+
     return (
         f"CVAuth reflector: authenticated message from "
-        f"{result['signer']}: {result['message']}"
+        f"{result['call_from']}: {result['message']}"
     )
 
 # =====================
@@ -501,7 +544,12 @@ class CVAuthReflector:
 
             result = verify_cvauth(received_payload, call_from, self.keyring)
             print(result)
-            reply_bytes = make_reflector_message(result)
+            reply_bytes = make_reflector_message(result, self.callsign, self.private_key)
+
+            #code to see the packet I created
+            #if result["auth_status"] == AuthType.NOTSIGNED:
+            #    created_packet = CVPacket.decode(reply_bytes, from_call=self.callsign)
+            #    print(created_packet)
 
             print(f"[TX] {reply_bytes}")
 

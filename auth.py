@@ -32,6 +32,24 @@ class PublicKeyProvider(Protocol):
     def get_public_key(self, callsign: str) -> Optional[Ed25519PublicKey]:
         ...
 
+def ensure_bytes(payload) -> bytes:
+    """
+    Normalize payload to bytes for crypto operations.
+    """
+    if payload is None:
+        raise ValueError("Payload is None")
+
+    if isinstance(payload, bytes):
+        return payload
+
+    if isinstance(payload, bytearray):
+        return bytes(payload)
+
+    if isinstance(payload, str):
+        return payload.encode("utf-8")
+
+    raise TypeError(f"Unsupported payload type: {type(payload)}")
+
 
 def generate_keypair(key_type: str):
     if key_type != "ed25519":
@@ -135,9 +153,9 @@ def sign_packet(
 
     if packet.payload is None:
         raise ValueError("Cannot sign packet with no payload")
-
+    bytes_payload = ensure_bytes(packet.payload)
     signature = crypto.sign(
-        payload=packet.payload,
+        payload=bytes_payload,
         private_key=private_key,
     )
 
