@@ -46,6 +46,8 @@ from cvauth import (
     AuthResult,
     PublicKeyProvider,
 )
+```
+
 
 ## Prerelease installation
 
@@ -65,7 +67,7 @@ pip install tomli_w
 or
 pip install toml
 
-
+```
 
 
 
