@@ -75,12 +75,12 @@ pip install toml
 
 ## Roadmap
 
-- [*] Define public API surface
-- [*] Define config and key layout
-- [*] Extract signing and verification logic
-- [*] Implement CLI wrapper
-- [*] Add unit tests
-- [*] Add a simple reflector
+- [x] Define public API surface
+- [x] Define config and key layout
+- [x] Extract signing and verification logic
+- [x] Implement CLI wrapper
+- [x] Add unit tests
+- [x] Add a simple reflector
 - [ ] Add a light weight terminal user interface
 - [ ] Publish to PyPI
 
