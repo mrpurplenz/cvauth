@@ -16,14 +16,14 @@ including Paracon, and future clients and servers.
 
 - Be the canonical Python implementation of Chattervox authentication
 - Be easy to audit and reason about
-- Be usable as a library or a CLI tool
+- Be usable as a library or a CLI tool or light weight tui
 - Avoid application-specific assumptions
 - Minimize forked or duplicated implementations
 
 ## Non-goals
 
-- User interfaces (GUI/TUI)
 - AX.25 socket or radio handling
+- uses pyham_pe to interface with an existing agwpe server such as direwolf
 - Connection management
 - Encryption (signing only)
 
@@ -47,13 +47,37 @@ from cvauth import (
     PublicKeyProvider,
 )
 
+## Prerelease installation
+
+While the intention is to eventually incorporate installation by pip
+
+At a guess you could get the terminal user interface (such as it is)
+up and running with
+
+```python
+pip install pyham-pe platformdirs cryptography tomli blessed
+
+#cd to the root dir of the clone and go
+python -m cvauth.cvauth_tui
+
+#If you have trouble with tomli you might want to try
+pip install tomli_w
+or
+pip install toml
+
+
+
+
+
 ## Roadmap
 
 - [*] Define public API surface
-- [ ] Define config and key layout
-- [ ] Extract signing and verification logic
-- [ ] Implement CLI wrapper
-- [ ] Add unit tests
+- [*] Define config and key layout
+- [*] Extract signing and verification logic
+- [*] Implement CLI wrapper
+- [*] Add unit tests
+- [*] Add a simple reflector
+- [ ] Add a light weight terminal user interface
 - [ ] Publish to PyPI
 
 ## License
