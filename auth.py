@@ -155,7 +155,8 @@ def sign_packet(
         raise ValueError("Cannot sign packet with no payload")
     bytes_payload = ensure_bytes(packet.payload)
     signature = crypto.sign(
-        payload=bytes_payload,
+        #payload=bytes_payload,
+        payload=ensure_bytes(packet.payload),
         private_key=private_key,
     )
 

@@ -1,6 +1,24 @@
 # config_utils.py
 import re
 
+def valid_callsign(call) -> bool:
+
+    _CALLSIGN_RE = re.compile(
+        r"""
+        ^                           # start
+        [A-Z]                       # must start with letter
+        [A-Z0-9]{0,5}               # up to 6 chars total
+        (?:-(?:[0-9]|1[0-5]))?      # optional -SSID (0–15)
+        $                           # end
+        """,
+        re.VERBOSE
+    )
+    if _CALLSIGN_RE.match(call):
+        return True
+
+    return False
+
+
 def request_callsign() -> str:
     """
     Prompt the user for a station callsign.

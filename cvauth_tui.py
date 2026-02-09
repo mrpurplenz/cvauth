@@ -3,11 +3,30 @@
 import queue
 import time
 import signal
-
 from blessed import Terminal
 import pe.app
 import pe.monitor
+from pathlib import Path
+from .config import ensure_config, load_config, update_config_value, CVAuthConfig
+from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
+from .packet import CVPacket
+from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key
 
+
+# ====================
+# CONFIGURE
+# ====================
+
+class LocalKeyring:
+    def __init__(self, public_key_path: Path, callsign: str):
+        self.public_key_path = public_key_path
+        self.callsign = callsign
+
+    def get_public_key(self, callsign: str):
+        if callsign == self.callsign:
+            from cvauth.auth import load_public_key
+            return load_public_key(self.public_key_path)
+        return None
 
 # =====================
 # MONITOR
@@ -35,14 +54,17 @@ class UIMonitor(pe.monitor.Monitor):
 # =====================
 
 class UIState:
-    def __init__(self, callsign="N0CALL", ssid=0, signing=False):
+    def __init__(self, config: CVAuthConfig=None, callsign="N0CALL", ssid=0, signing=False):
         self.running = True
         self.callsign = callsign
         self.ssid = ssid
         self.signing = signing
         self.messages = []      # list[str]
         self.input_buffer = ""
-
+        self.config = None
+        self.private_key_path = None
+        self.public_key_path = None
+        self.destination = "ALL"
 
 # =====================
 # RENDER
@@ -63,9 +85,10 @@ def render(term: Terminal, state: UIState):
     # ----- Header -----
     call_print=state.callsign
     ssid_print=state.ssid
+    destination=state.destination or ""
     #call_print="ZL2DRS"
     #ssid_print="4"
-    headerL = f" CVAuth chat by ZL2DRS | Station {call_print}-{ssid_print} | Dest [] | Filter []"
+    headerL = f" CVAuth chat by ZL2DRS | Station {call_print}-{ssid_print} | Dest [{str(destination)}] | Filter []"
     sign_text = "Signing ON" if state.signing else "signing OFF"
     pad_width = width -len(headerL)- len(sign_text)
     if pad_width < 1:
@@ -135,9 +158,9 @@ def run_tui(
 
                     if line:
                         if line.startswith("/"):
-                            handle_command(line, state)
+                            dispatch_command(line, state)
                         else:
-                            send_message(line, state)
+                            send_message(line, state, app)
 
                     state.input_buffer = ""
 
@@ -173,6 +196,141 @@ def run_tui(
 # COMMANDS
 # ====================
 
+def cmd_quit(args, state):
+    state.running = False
+    state.messages.append("[system] Exiting.")
+    return True
+
+def cmd_help(args, state):
+    if not args:
+        state.messages.append("[system] Available commands:")
+        for name, meta in COMMANDS.items():
+            state.messages.append(
+                f"[system] /{name:<8} - {meta['help']}"
+            )
+        return True
+
+    cmd = COMMANDS.get(args[0])
+    if not cmd:
+        state.messages.append(
+            "f[error] No such command: /{args[0]}"
+        )
+        return True
+
+    state.messages.append(f"[system] Usage: {cmd['usage']}")
+    state.messages.append(f"[system] " + cmd["help"])
+    return True
+
+def cmd_sign(args, state):
+    new_signing = not(state.signing)
+    state.signing = new_signing
+    state.messages.append(f"[system] Signing toggled to {new_signing}")
+    return True
+
+def cmd_filter(args, state):
+    return True
+
+def cmd_status(args, state):
+    return True
+
+def cmd_destination(args, state):
+    dest = args[0].strip().upper()
+    VALID_ADHOC_DESTINATIONS = {
+    "CQ",
+    "QST",
+    "BEACON",
+    "IDENT",
+    "ALL",
+    "APRS",
+    "CVAUTH",   # your protocol
+    }
+
+    if not dest:
+        return False
+
+    if dest in VALID_ADHOC_DESTINATIONS:
+        state.destination=dest
+        return True
+
+    if valid_callsign(dest):
+        state.destination=dest
+        return True
+
+    state.messages.append(f"[system] Destination must be either a valid call sign with optional ssid or one of")
+    for valid_destination in VALID_ADHOC_DESTINATIONS:
+        state.messages.append(f"[system]     {valid_destination}")
+
+    return False
+
+def cmd_via(args, state):
+    return True
+
+
+
+COMMANDS = {
+    "quit": {
+        "handler": cmd_quit,
+        "help": "Exit the application",
+        "usage": "/quit"
+    },
+    "help": {
+        "handler": cmd_help,
+        "help": "Show help for commands",
+        "usage": "/help [command]"
+    },
+    "sign": {
+        "handler": cmd_sign,
+        "help": "Enable or disable message signing",
+        "usage": "/sign on|off|toggle|status"
+    },
+    "filter": {
+        "handler": cmd_filter,
+        "help": "Set destination callsign filter",
+        "usage": "/filter STRING or /filter -"
+    },
+    "status": {
+        "handler": cmd_status,
+        "help": "Show current status",
+        "usage": "/status"
+    },
+    "destination": {
+        "handler": cmd_destination,
+        "help": "Set the Unproto packet destination",
+        "usage": "/destination CALLSIGN"
+    },
+    "via": {
+        "handler": cmd_via,
+        "help": "Set the via nodes to pass through",
+        "usage": "/via NODE"
+    }
+}
+
+
+#Helper to wrangle the commands
+def dispatch_command(line, state):
+    parts = line.lstrip("/").split()
+    if not parts:
+        return
+
+    cmd_name = parts[0]
+    args = parts[1:]
+
+    cmd = COMMANDS.get(cmd_name)
+
+    if not cmd:
+        state.messages.append(
+            (f"[system] error Unknown command: /{cmd_name}")
+        )
+        return
+
+    try:
+        cmd["handler"](args, state)
+    except Exception as e:
+        state.messages.append(
+            (f"[system] error Command failed: {e}")
+        )
+
+#Depricated
 def handle_command(line, state):
     """
     Handle slash-commands.
@@ -187,14 +345,52 @@ def handle_command(line, state):
 
     state.messages.append(f"[error] Unknown command: {cmd}")
     return True
+# ====================
+# AUTHENTICATION
+# ====================
+
+def sign_outgoing(line, state):
+
+    pkt = CVPacket(
+        from_call=state.callsign,
+        payload=ensure_bytes(line),
+    )
+    config = state.config
+    private_key_path = config.keys.private_key
+    private_key_Posix = Path(private_key_path)
+    private_key_file = config.resolve_path(private_key_Posix)
+    private_key_deserial = load_private_key(private_key_file)
+    sign_packet(pkt, private_key_deserial)
+    return pkt.encode()
+
+
 
 # =====================
 # TRANSMISSION
 # =====================
 
-def send_message(line, state):
+def send_message(line, state, app):
     # Stub: later this will go through AX.25 / signing / etc
     state.messages.append(f"[local] {line}")
+
+    AX25_PORT = 0  #NEEDS MOVING TO STATE AND ULTIMATELY TO CONFIG
+    VIA = []  # e.g. ["WIDE1-1", "WIDE2-1"] NEEDS MOVING TO STATE AND BE MUTABLE BY COMMAND
+    destination = state.destination or ""
+    call_to = destination
+    call_from = f"{state.callsign}-{state.ssid}"
+    signing = state.signing
+    if signing:
+        reply_bytes = sign_outgoing(line, state)
+    else:
+        reply_bytes = line.encode('utf-8')
+
+    app.send_unproto(
+        AX25_PORT,
+        call_from,
+        call_to,
+        reply_bytes,
+        VIA,
+    )
 
 
 # =====================
@@ -256,10 +452,77 @@ def main():
     monitor = UIMonitor()
     app.use_monitor(monitor)
 
-    #ensuring config file, loading config, and user interactionm to fill missing config values should go here
-    #then config should be loaded into the state for use elsewhere
+    #Initialise the state data
+    state = UIState()
 
-    state = UIState(callsign="ZL2DRS", ssid=1)
+    #Fetch config and load to the state
+    config_path = ensure_config()
+    config = load_config(config_path)
+    state.config = config
+
+    #Callsign
+    callsign = config.identity.callsign
+    if not callsign:
+        callsign = request_callsign()
+        config = update_config_value(config, "identity.callsign", callsign)
+    state.callsign = config.identity.callsign
+
+    #SSID
+    ssid = config.identity.ssid
+    if not ssid:
+        ssid = request_ssid()
+        config = update_config_value(config, "identity.ssid", ssid)
+    state.ssid = config.identity.ssid
+
+    #Local key paths
+    private_key_path = config.keys.private_key
+    public_key_path = config.keys.public_key
+
+    if not private_key_path or not public_key_path:
+        private_key_path, public_key_path = request_keypair_paths(config)
+
+        config = update_config_value(
+            config, "keys.private_key", private_key_path
+        )
+        config = update_config_value(
+            config, "keys.public_key", public_key_path
+        )
+    state.private_key_path = private_key_path
+    state.public_key_path = public_key_path
+
+    #Local key files
+    private_posix = config.resolve_path(Path(config.keys.private_key))
+    public_posix = config.resolve_path(Path(config.keys.public_key))
+
+    if not private_posix.exists() or not public_posix.exists():
+        print()
+        print("No keypair files found on disk.")
+        print(f"Expected private key: {private_path}")
+        print(f"Expected public key : {public_path}")
+        print()
+
+        confirm = input("Generate a new keypair now? [Y/n]: ").strip().lower()
+        if confirm not in ("", "y", "yes"):
+            raise RuntimeError("Cannot continue without a keypair")
+
+        private_posix.parent.mkdir(parents=True, exist_ok=True)
+        public_posix.parent.mkdir(parents=True, exist_ok=True)
+
+        generate_and_save_keypair(
+            private_path=private_posix,
+            public_path=public_posix,
+        )
+
+
+        # Load private key (now guaranteed to exist)
+        state.private_key = load_private_key(private_posix)
+
+    #public keys keyring
+    state.keyring = LocalKeyring(
+        public_key_path=config.resolve_path(config.keys.public_key),
+        callsign=config.identity.callsign
+    )
+
 
     def shutdown(signum, frame):
         state.running = False
