@@ -57,6 +57,8 @@ At a guess you could get the terminal user interface (such as it is)
 up and running with
 
 ```python
+
+git clone https://github.com/mpurplenz/cvauth.git cvauth_dev
 pip install pyham-pe platformdirs cryptography tomli blessed
 
 #cd to the root dir of the clone and go
