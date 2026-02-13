@@ -174,15 +174,34 @@ def run_tui(
             while not monitor.queue.empty():
                 evt = monitor.queue.get()
                 payload = evt["data"]
+                call_from = evt["from"]
 
                 #pass the payload to authentication process
-
+                result = verify_cvauth(payload, evt["from"], state.keyring)
+                auth_status=(result["auth_status"])
+                sanitised_payload = result["sanitised_payload"]
                 try:
-                    text = payload.decode("utf-8", "replace")
+                    text = sanitised_payload.decode("utf-8", "replace")
                 except Exception:
-                    text = repr(payload)
+                    text = repr(sanitised_payload)
+
+                msg_colour = term.white
+                match auth_status:
+                    case AuthType.UNKNOWN:
+                        msg_colour = term.orange
+                    case AuthType.NOTSIGNED:
+                        msg_colour = term.yellow
+                    case AuthType.VALID:
+                        msg_colour = term.green
+                    case AuthType.KEYNOTFOUND:
+                        msg_colour = term.orange
+                    case AuthType.INVALID:
+                        msg_colour = term.red
+                    case _:
+                        msg_colour = term.orange
 
                 state.messages.append(
+                    msg_colour +
                     f"[RX] {evt['from']} → {evt['to']}: {text}"
                 )
 
@@ -362,6 +381,62 @@ def sign_outgoing(line, state):
     private_key_deserial = load_private_key(private_key_file)
     sign_packet(pkt, private_key_deserial)
     return pkt.encode()
+
+def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring):
+    """
+    Verify a CVAuth packet and return structured information.
+
+    Returns dict:
+      {
+        "signed": bool,       		# True if the packet had a signature
+        "valid": bool,        		# True if the signature is valid
+        "signer": str|None,   		# Callsign of signer if known
+        "call_from": str,               # Call sign of UI packer sender
+        "sanitised_payload": bytes      # Internal payload of the CVAuth packet
+      }
+    """
+    AUTH_DISPLAY = {
+        AuthType.VALID:       "Signature verified",
+        AuthType.NOTSIGNED:   "Not signed",
+        AuthType.KEYNOTFOUND: "Public key not found",
+        AuthType.INVALID:     "Invalid signature",
+        AuthType.UNKNOWN:     "Unknown",
+    }
+
+    try:
+        # Wrap the raw bytes into a CVPacket
+        packet = CVPacket.decode(raw=received_payload, from_call=call_from)
+    except Exception:
+        # Not a CVAuth packet at all
+        text = payload.decode("utf-8", "replace")
+        return {
+            "auth_status": AuthType.UNKNOWN,
+            "authentic": "Unknown packet format",
+            "reason": None,
+            "signer": None,
+            "call_from": call_from,
+            "sanitised_payload": text.strip(),
+        }
+
+    # Use your auth module to verify the packet
+    result = verify_packet(packet, keyring)
+    print(packet)
+    print(result)
+
+    # Map AuthType to signed/valid
+    signed = result.auth_type != AuthType.NOTSIGNED and result.auth_type != AuthType.UNKNOWN
+    valid = result.auth_type == AuthType.VALID
+    authenticity = AUTH_DISPLAY[result.auth_type]
+
+    return {
+        "auth_status": result.auth_type,
+        "authentic": authenticity,
+        "reason": result.reason if result.reason else None,
+        "signer": result.signer if signed else None,
+        "call_from": call_from,
+        "sanitised_payload": packet.payload,
+    }
+
 
 
 
