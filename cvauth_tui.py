@@ -120,7 +120,7 @@ def render(term: Terminal, state: UIState):
     # ----- Prompt -----
     prompt = f"{state.callsign} > "
     print(
-        term.move_yx(height - 1, 0)
+        term.move_yx(height+2, 0)
         + term.bold
         + prompt
         + term.normal
@@ -203,6 +203,7 @@ def run_tui(
                 state.messages.append(
                     msg_colour +
                     f"[RX] {evt['from']} → {evt['to']}: {text}"
+                    + term.normal
                 )
 
             # ---- Render ----
