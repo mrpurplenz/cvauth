@@ -1,0 +1,137 @@
+Metadata-Version: 2.4
+Name: cvauth
+Version: 0.1.0
+Summary: CVAuth: Chattervox authentication library and tools
+Author-email: Richard Edmonds <mrpurple@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2026 Richard Edmonds
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyham-pe
+Requires-Dist: platformdirs
+Requires-Dist: cryptography>=41.0
+Requires-Dist: tomli; python_version < "3.11"
+Requires-Dist: tomli_w
+Requires-Dist: toml>=0.10
+Requires-Dist: blessed
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Dynamic: license-file
+
+# CVAuth
+
+CVAuth is a reference Python implementation of the Chattervox
+authentication and signature protocol for AX.25 packet data.
+
+It provides reusable logic for:
+- Signing AX.25 packets using Chattervox-compatible signatures
+- Verifying signed packets and extracting authenticated payloads
+- Managing local and trusted public keys in a standard location
+- Providing both a Python API and a command-line interface
+
+CVAuth is designed to be used by multiple AX.25 applications,
+including Paracon, and future clients and servers.
+
+## Basis
+
+CVAuth is based on the ChatterVox protocol by Brannon Dorsey,    KC3LZO
+and the code based on the awgoe server api PyHamPe by Martin F N Cooper, KD6YAM
+
+
+## Project goals
+
+- Be the canonical Python implementation of Chattervox authentication
+- Be easy to audit and reason about
+- Be usable as a library or a CLI tool or light weight tui
+- Avoid application-specific assumptions
+- Minimize forked or duplicated implementations
+
+## Non-goals
+
+- AX.25 socket or radio handling
+- uses pyham_pe to interface with an existing agwpe server such as direwolf
+- Connection management
+- Encryption (signing only)
+
+## Status
+
+This project is in early development.
+The initial focus is on defining clean APIs and extracting
+existing, working code from my Paracon-auth fork into a standalone library.
+
+## Public API
+
+CVAuth guarantees stability for the following symbols:
+
+```python
+from cvauth import (
+    CVPacket,
+    sign_packet,
+    verify_packet,
+    AuthType,
+    AuthResult,
+    PublicKeyProvider,
+)
+```
+
+
+## Prerelease installation
+
+While the intention is to eventually incorporate installation by pip
+
+At a guess you could get the terminal user interface (such as it is)
+up and running with
+
+```python
+
+git clone https://github.com/mpurplenz/cvauth.git cvauth_dev
+pip install pyham-pe platformdirs cryptography tomli blessed
+
+#cd to the root dir of the clone and go
+python -m cvauth.cvauth_tui
+
+#If you have trouble with tomli you might want to try
+pip install tomli_w
+or
+pip install toml
+
+```
+
+
+
+## Roadmap
+
+- [x] Define public API surface
+- [x] Define config and key layout
+- [x] Extract signing and verification logic
+- [x] Implement CLI wrapper
+- [x] Add unit tests
+- [x] Add a simple reflector
+- [ ] Add a light weight terminal user interface
+- [ ] Publish to PyPI
+
+## License
+
+MIT

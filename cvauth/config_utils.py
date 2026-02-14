@@ -1,5 +1,6 @@
 # config_utils.py
 import re
+import sys
 
 def valid_callsign(call) -> bool:
 
@@ -19,20 +20,28 @@ def valid_callsign(call) -> bool:
     return False
 
 
-def request_callsign() -> str:
+
+CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}$")
+
+
+def request_callsign(default: str | None = None) -> str:
     """
     Prompt the user for a station callsign.
 
-    Returns:
-        Uppercase callsign string.
+    If default is provided, it is returned immediately.
 
     Raises:
-        RuntimeError if stdin is not interactive.
+        RuntimeError if interactive input is unavailable.
     """
-    CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}$")
 
-    if not hasattr(__builtins__, "input"):
-        raise RuntimeError("Interactive input unavailable")
+    if default:
+        return default.strip().upper()
+
+    if not sys.stdin or not sys.stdin.isatty():
+        raise RuntimeError(
+            "Interactive input unavailable. "
+            "Please supply a callsign via configuration or --callsign."
+        )
 
     print("\nNo callsign is configured for this station.")
     print("Please enter the callsign this station should use.")

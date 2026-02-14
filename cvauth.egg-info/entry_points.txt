@@ -1,0 +1,4 @@
+[console_scripts]
+cvauth-cli = cvauth.cvauth_cli:main
+cvauth-reflector = cvauth.cvauth_reflector:main
+cvauth-tui = cvauth.cvauth_tui:main

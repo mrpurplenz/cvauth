@@ -1,0 +1,13 @@
+pyham-pe
+platformdirs
+cryptography>=41.0
+tomli_w
+toml>=0.10
+blessed
+
+[:python_version < "3.11"]
+tomli
+
+[dev]
+pytest
+pytest-cov
