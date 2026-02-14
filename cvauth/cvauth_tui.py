@@ -10,7 +10,7 @@ from pathlib import Path
 from .config import ensure_config, load_config, update_config_value, CVAuthConfig
 from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
 from .packet import CVPacket
-from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key
+from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
 
 
 # ====================
@@ -579,8 +579,8 @@ def main():
     if not private_posix.exists() or not public_posix.exists():
         print()
         print("No keypair files found on disk.")
-        print(f"Expected private key: {private_path}")
-        print(f"Expected public key : {public_path}")
+        print(f"Expected private key: {str(config.keys.private_key)}")
+        print(f"Expected public key : {str(config.keys.public_key)}")
         print()
 
         confirm = input("Generate a new keypair now? [Y/n]: ").strip().lower()
