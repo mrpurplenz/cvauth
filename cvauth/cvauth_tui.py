@@ -89,7 +89,7 @@ def render(term: Terminal, state: UIState):
     destination=state.destination or ""
     #call_print="ZL2DRS"
     #ssid_print="4"
-    headerL = f" CVAuth chat by ZL2DRS | Station {call_print}-{ssid_print} | Dest [{str(destination)}] | Filter []"
+    headerL = f" CVAuth chat | Station {call_print}-{ssid_print} | Dest [{str(destination)}] | Filter []"
     sign_text = "Signing ON" if state.signing else "signing OFF"
     pad_width = width -len(headerL)- len(sign_text)
     if pad_width < 1:
