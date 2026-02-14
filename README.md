@@ -65,6 +65,10 @@ CVAuth can be installed directly from GitHub. It is recommended to install insid
 Install the latest version:
 
 ```bash
+cd ~
+mkdir cvauth
+python -m venv cvenv
+source cvenv/bin/activate
 pip install git+https://github.com/mrpurplenz/cvauth.git
 
 ```
