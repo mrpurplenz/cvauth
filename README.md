@@ -30,15 +30,23 @@ and the code based on the AGWPE server api [pyham_pe](https://github.com/mfncoop
 ## Non-goals
 
 - AX.25 socket or radio handling
-- uses pyham_pe to interface with an existing agwpe server such as direwolf
-- Connection management
+- handle tnc or direwolf connectivity
+- Connection management - ONLY chattervox protocol support which excludes connected frames for now
 - Encryption (signing only)
 
 ## Status
 
-This project is in early development.
-The initial focus is on defining clean APIs and extracting
-existing, working code from my Paracon-auth fork into a standalone library.
+This project is now at initial release
+The focus is on defining clean APIs and maybe 
+fulfilling my personal goals for an authenticated chat terminal.
+
+Other uses may be built using the example programs:
+cvauth_tui.py
+cvauth_reflector.py
+cvauth_cli.py
+
+for example I might build an authenticated radio chess program one day...
+or someone else could using my api and example code.
 
 ## Public API
 
@@ -60,6 +68,12 @@ from cvauth import (
 CVAuth can be installed directly from GitHub. It is recommended to install inside a Python virtual environment.
 
 ---
+Preparation
+You need to install and have a working direwolf version
+A great resource for that can be found here
+[The modern ham - Ultimate Direwolf Installation guide for packet radio - Windows and Linux}(https://youtu.be/iDQd1SoGgQE?si=fIfgTmMcmtIlO6qF)
+
+
 
 ### Option 1 — Install Directly from GitHub (Recommended)
 
@@ -78,7 +92,8 @@ pip install git+https://github.com/mrpurplenz/cvauth.git
 
 
 ### Option 3 - Wait until a pypi pip install candidate is generated (no plans yet) 
-
+At the moment cvauth-tui defaults to AX25_PORT = 0, VIA=[], AGW_HOST = "127.0.0.1", AGW_PORT = 8000
+So it wont work without these and I havn't moved them to the config yet.
 
 ## Roadmap
 
