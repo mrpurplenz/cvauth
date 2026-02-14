@@ -5,6 +5,8 @@ __pycache__/
 # Virtualenv
 .venv/
 venv/
+.testenv/
+testenv/
 
 # IDE
 .spyderproject
@@ -13,3 +15,7 @@ venv/
 
 # OS
 .DS_Store
+
+# Distribution info
+.dist/
+dist/
