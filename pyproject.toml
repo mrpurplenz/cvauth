@@ -32,9 +32,14 @@ cvauth-tui = "cvauth.cvauth_tui:main"
 cvauth-cli = "cvauth.cvauth_cli:main"
 cvauth-reflector = "cvauth.cvauth_reflector:main"
 
-[tool.setuptools]
-packages = ["cvauth"]
+#[tool.setuptools]
+#packages = ["cvauth"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cvauth*"]
+
 
 [tool.setuptools.package-data]
-cvauth = ["cvauth.tom"]
+cvauth = ["cvauth.toml"]
 
