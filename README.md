@@ -73,6 +73,10 @@ pip install git+https://github.com/mrpurplenz/cvauth.git
 
 ```
 
+### Option 2 — Clone a developement version (Recommended for contributors)
+
+
+### Option 3 - Wait until a pypi pip install candidate is generated (no plans yet) 
 
 
 ## Roadmap
