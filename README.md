@@ -11,11 +11,12 @@ It provides reusable logic for:
 
 CVAuth is designed to be used by multiple AX.25 applications,
 including Paracon, and future clients and servers.
+Example programs are installed with the api
 
 ## Basis
 
-CVAuth is based on the ChatterVox protocol by Brannon Dorsey,    KC3LZO
-and the code based on the awgoe server api PyHamPe by Martin F N Cooper, KD6YAM
+CVAuth is based on the [ChatterVox protocol](https://github.com/brannondorsey/chattervox) by Brannon Dorsey, KC3LZO
+and the code based on the AGWPE server api [pyham_pe](https://github.com/mfncooper/pyham_pe) by Martin F N Cooper, KD6YAM
 
 
 ## Project goals
