@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cvauth"
+version = "0.1.0"
+description = "CVAuth: Chattervox authentication library and tools"
+authors = [
+    { name = "Richard Edmonds", email = "mrpurple@gmail.com" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+
+dependencies = [
+    "pyham-pe",
+    "platformdirs",
+    "cryptography>=41.0",
+    "tomli; python_version < '3.11'",
+    "tomli_w",
+    "toml>=0.10",
+    "blessed",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+# --- CLI entry points ---
+[project.scripts]
+cvauth-tui = "cvauth.cvauth_tui:main"
+cvauth-cli = "cvauth.cvauth_cli:main"
+cvauth-reflector = "cvauth.cvauth_reflector:main"
+
+[tool.setuptools]
+packages = ["cvauth"]
+
+[tool.setuptools.package-data]
+cvauth = ["cvauth.tom"]
+
