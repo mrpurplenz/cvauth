@@ -65,6 +65,7 @@ class UIState:
         self.private_key_path = None
         self.public_key_path = None
         self.destination = "ALL"
+        self.verbose = False
 
 # =====================
 # RENDER
@@ -199,10 +200,13 @@ def run_tui(
                         msg_colour = term.red
                     case _:
                         msg_colour = term.orange
-
+                RXheader = "[RX]"
+                if state.verbose:
+                    RXheader = f"[RX {result['reason']}]"
                 state.messages.append(
                     msg_colour +
-                    f"[RX] {evt['from']} → {evt['to']}: {text}"
+                    RXheader +
+                    f" {evt['from']} → {evt['to']}: {text}"
                     + term.normal
                 )
 
@@ -245,6 +249,12 @@ def cmd_sign(args, state):
     new_signing = not(state.signing)
     state.signing = new_signing
     state.messages.append(f"[system] Signing toggled to {new_signing}")
+    return True
+
+def cmd_verbose(args, state):
+    new_verbose = not(state.verbose)
+    state.verbose = new_verbose
+    state.messages.append(f"[system] Verbose validity reason toggled to {new_verbose}")
     return True
 
 def cmd_filter(args, state):
@@ -302,6 +312,11 @@ COMMANDS = {
         "handler": cmd_sign,
         "help": "Enable or disable message signing",
         "usage": "/sign on|off|toggle|status"
+    },
+    "verbose": {
+        "handler": cmd_verbose,
+        "help": "Toggle verbose authenticity reason on receive",
+        "usage": "/verbose on|off|toggle|status"
     },
     "filter": {
         "handler": cmd_filter,
@@ -389,8 +404,9 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
 
     Returns dict:
       {
-        "signed": bool,       		# True if the packet had a signature
-        "valid": bool,        		# True if the signature is valid
+        "auth_status": AuthType,        # One of UK, NS, SV, NK, IV
+        "authentic": bool,              # True if valid
+        "reason": str,                  # String contianing the reason for the status
         "signer": str|None,   		# Callsign of signer if known
         "call_from": str,               # Call sign of UI packer sender
         "sanitised_payload": bytes      # Internal payload of the CVAuth packet
@@ -447,7 +463,7 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
 
 def send_message(line, state, app):
     # Stub: later this will go through AX.25 / signing / etc
-    state.messages.append(f"[local] {line}")
+    state.messages.append(f"[TX] {line}")
 
     AX25_PORT = 0  #NEEDS MOVING TO STATE AND ULTIMATELY TO CONFIG
     VIA = []  # e.g. ["WIDE1-1", "WIDE2-1"] NEEDS MOVING TO STATE AND BE MUTABLE BY COMMAND
@@ -474,12 +490,12 @@ def send_message(line, state, app):
 # =====================
 def show_splash(term):
     splash = [
-" ________            _________                                                                     ",
-" \______ \_______   /   _____/__ _______ ___  __ ____   ______                                     ",
-"  |    |  \_  __ \  \_____  \|  |  \__  \\\\  \/ // __ \ /  ___/                                     ",
-"  |    `   \  | \/  /        \  |  // __ \\\\   /\  ___/ \___ \                                      ",
-" /_______  /__|    /_______  /____/(____  /\_/  \___  >____  >                                     ",
-"         \/                \/           \/          \/     \/                                      ",
+" ________            _________                                  ",
+" \______ \_______   /   _____/__ _______ ___  __ ____   ______  ",
+"  |    |  \_  __ \  \_____  \|  |  \__  \\\\  \/ // __ \ /  ___/",
+"  |    `   \  | \/  /        \  |  // __ \\\\   /\  ___/ \___ \ ",
+" /_______  /__|    /_______  /____/(____  /\_/  \___  >____  >  ",
+"         \/                \/           \/          \/     \/   ",
 "_____________   ____     _____          __  .__      ",
 "\_   ___ \   \ /   /    /  _  \  __ ___/  |_|  |__   ",
 "/    \  \/\   Y   /    /  /_\  \|  |  \   __\  |  \  ",
