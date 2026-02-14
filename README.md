@@ -54,26 +54,18 @@ from cvauth import (
 )
 ```
 
+## Installation
 
-## Prerelease installation
+CVAuth can be installed directly from GitHub. It is recommended to install inside a Python virtual environment.
 
-While the intention is to eventually incorporate installation by pip
+---
 
-At a guess you could get the terminal user interface (such as it is)
-up and running with
+### Option 1 — Install Directly from GitHub (Recommended)
 
-```python
+Install the latest version:
 
-git clone https://github.com/mpurplenz/cvauth.git cvauth_dev
-pip install pyham-pe platformdirs cryptography tomli blessed
-
-#cd to the root dir of the clone and go
-python -m cvauth.cvauth_tui
-
-#If you have trouble with tomli you might want to try
-pip install tomli_w
-or
-pip install toml
+```bash
+pip install git+https://github.com/mrpurplenz/cvauth.git
 
 ```
 
@@ -87,7 +79,7 @@ pip install toml
 - [x] Implement CLI wrapper
 - [x] Add unit tests
 - [x] Add a simple reflector
-- [ ] Add a light weight terminal user interface
+- [x] Add a light weight terminal user interface
 - [ ] Publish to PyPI
 
 ## License
