@@ -66,6 +66,7 @@ class UIState:
         self.public_key_path = None
         self.destination = "QST"
         self.verbose = False
+        self.netrom_nodes = {}   # dict[str, dict] keyed by sender callsign
 
 # =====================
 # RENDER
@@ -206,6 +207,21 @@ def run_tui(
                 evt = monitor.queue.get()
                 payload = evt["data"]
                 call_from = evt["from"]
+                call_to = evt["to"]
+
+                if is_netrom_nodes_packet(call_to, payload):
+                        netrom_data = decode_netrom_nodes(call_from, payload)
+
+                        if netrom_data:
+                            # Store globally in state
+                            state.netrom_nodes[call_from] = netrom_data
+                
+                            # Export readable output
+                            for line in format_netrom_summary(netrom_data):
+                                state.messages.append(term.cyan + line + term.normal)
+
+                        continue  # Skip CVAuth + text decode
+        
 
                 #pass the payload to authentication process
                 result = verify_cvauth(payload, evt["from"], state.keyring)
@@ -485,7 +501,138 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
         "sanitised_payload": packet.payload,
     }
 
+# =====================
+# NET/ROM DETECTION + DECODER
+# =====================
 
+def is_netrom_nodes_packet(call_to: str, payload: bytes) -> bool:
+    """
+    Identify NET/ROM NODES broadcast.
+    """
+    if call_to.strip().upper() != "NODES":
+        return False
+
+    # Must contain at least count byte + one entry (~21 bytes minimum)
+    if len(payload) < 21:
+        return False
+
+    return True
+
+def decode_ax25_callsign(addr: bytes) -> str:
+    """
+    Decode 7-byte shifted AX.25 callsign field.
+    """
+    call = ''.join(chr(b >> 1) for b in addr[:6]).strip()
+    ssid = (addr[6] >> 1) & 0x0F
+    return f"{call}-{ssid}" if ssid else call
+def decode_netrom_nodes(sender: str, payload: bytes) -> dict:
+    """
+    Decode NET/ROM NODES broadcast (AGWPE monitor format).
+    """
+
+    nodes = {}
+
+    try:
+        # Skip NET/ROM header (commonly 15 bytes)
+        # Adjust if needed
+        offset = 15
+
+        if offset >= len(payload):
+            return {}
+
+        count = payload[offset]
+        offset += 1
+
+        for _ in range(count):
+            if offset + 21 > len(payload):
+                break
+
+            dest_call = decode_ax25_callsign(payload[offset:offset+7])
+            offset += 7
+
+            alias = payload[offset:offset+6].decode("ascii", "replace").strip()
+            offset += 6
+
+            best_neighbor = decode_ax25_callsign(payload[offset:offset+7])
+            offset += 7
+
+            quality = payload[offset]
+            offset += 1
+
+            nodes[dest_call] = {
+                "alias": alias,
+                "best_neighbor": best_neighbor,
+                "quality": quality,
+            }
+
+    except Exception:
+        return {}
+
+    return {
+        "sender": sender,
+        "node_count": len(nodes),
+        "nodes": nodes,
+    }
+
+def depr_decode_netrom_nodes(sender: str, payload: bytes) -> dict:
+    """
+    Decode NET/ROM NODES broadcast into structured dict.
+    """
+
+    nodes = {}
+
+    try:
+        count = payload[0]
+        offset = 1
+
+        for _ in range(count):
+            if offset + 21 > len(payload):
+                break
+
+            dest_call = decode_ax25_callsign(payload[offset:offset+7])
+            offset += 7
+
+            alias = payload[offset:offset+6].decode("ascii", "replace").strip()
+            offset += 6
+
+            best_neighbor = decode_ax25_callsign(payload[offset:offset+7])
+            offset += 7
+
+            quality = payload[offset]
+            offset += 1
+
+            nodes[dest_call] = {
+                "alias": alias,
+                "best_neighbor": best_neighbor,
+                "quality": quality,
+            }
+
+    except Exception:
+        return {}
+
+    return {
+        "sender": sender,
+        "node_count": len(nodes),
+        "nodes": nodes,
+    }
+
+def format_netrom_summary(netrom_dict: dict) -> list[str]:
+    """
+    Convert decoded NET/ROM dict into printable lines.
+    """
+    lines = []
+    sender = netrom_dict["sender"]
+    count = netrom_dict["node_count"]
+
+    lines.append(f"[NET/ROM] {sender} advertises {count} nodes")
+
+    for call, entry in netrom_dict["nodes"].items():
+        lines.append(
+            f"   {call:<10} via {entry['best_neighbor']:<10} "
+            f"q={entry['quality']:<3} alias={entry['alias']}"
+        )
+
+    return lines
 
 
 # =====================

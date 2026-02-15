@@ -81,14 +81,40 @@ Install the latest version:
 
 ```bash
 cd ~
-mkdir cvauth
+mkdir -p cvauth
+cd cvauth
+
 python -m venv cvenv
 source cvenv/bin/activate
-pip install git+https://github.com/mrpurplenz/cvauth.git
 
+python -m pip install --upgrade pip setuptools wheel
+
+pip install "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
+
+python -c "import cvauth, sys; print('cvauth OK, Python', sys.version)"
+```
+
+To run the terminal (for example) type
+
+```bash
+cvauth-tui
 ```
 
 ### Option 2 — Clone a developement version (Recommended for contributors)
+
+```bash
+cd ~
+mkdir cvauth-dev
+cd cvauth-dev
+
+python -m venv cvenv
+source cvenv/bin/activate
+
+git clone https://github.com/mrpurplenz/cvauth.git
+cd cvauth
+
+pip install -e .
+```
 
 
 ### Option 3 - Wait until a pypi pip install candidate is generated (no plans yet) 
