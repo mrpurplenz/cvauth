@@ -64,7 +64,7 @@ class UIState:
         self.config = None
         self.private_key_path = None
         self.public_key_path = None
-        self.destination = "ALL"
+        self.destination = "QST"
         self.verbose = False
 
 # =====================
@@ -72,6 +72,7 @@ class UIState:
 # =====================
 
 def render(term: Terminal, state: UIState):
+    print(term.home + term.clear)
     height = term.height
     width = term.width
 
@@ -80,26 +81,50 @@ def render(term: Terminal, state: UIState):
     BODY_Y = height - HEADER_Y - PROMPT_Y
 
     # Clear screen
-    print(term.home + term.clear)
+    #print(term.home + term.clear)
+    #print(term.home)
     #print(term.home) #This line to drive the prompt line up the screen
 
     # ----- Header -----
     call_print=state.callsign
     ssid_print=state.ssid
     destination=state.destination or ""
-    #call_print="ZL2DRS"
-    #ssid_print="4"
-    headerL = f" CVAuth chat | Station {call_print}-{ssid_print} | Dest [{str(destination)}] | Filter []"
+    display_filter = ""
+    h_1 = f" CVAuth chat | Station ["
+    h_2 = f"{call_print}-{ssid_print}"
+    h_3 = f"] | Dest ["
+    h_4 = f"{str(destination)}"
+    h_5 = f"] | Filter ["
+    h_6 = f"{display_filter}"
+    h_7 = f"]"
+    header_no_colour = h_1+h_2+h_3+h_4+h_5+h_6+h_7
     sign_text = "Signing ON" if state.signing else "signing OFF"
-    pad_width = width -len(headerL)- len(sign_text)
+    pad_width = width -len(header_no_colour)- len(sign_text)
     if pad_width < 1:
         pad_width = 1
     headerPAD = " " * pad_width
 
     # Now apply colours
+    header_BG = term.on_grey
+    headerL = (
+        header_BG + 
+        h_1 +
+        term.yellow +
+        h_2 +
+        header_BG + term.black +
+        h_3 +
+        term.yellow +
+        h_4 +
+        header_BG + term.black +
+        h_5 +
+        term.yellow +
+        h_6 +
+        header_BG + term.black +
+        h_7
+    )
     headerR = (
-        term.green + sign_text if state.signing
-        else term.red + sign_text
+        header_BG + term.green + sign_text if state.signing
+        else header_BG + term.red + sign_text
     )
     header = headerL + headerPAD + headerR
 
@@ -121,7 +146,7 @@ def render(term: Terminal, state: UIState):
     # ----- Prompt -----
     prompt = f"{state.callsign} > "
     print(
-        term.move_yx(height+2, 0)
+        term.move_yx(height-1, 0)
         + term.bold
         + prompt
         + term.normal
@@ -149,12 +174,16 @@ def run_tui(
     term = Terminal()
     show_splash(term)
     with term.fullscreen(), term.cbreak():
+        print(term.home + term.clear)
+        render(term, state)
         while state.running:
+            dirty = False
             # ---- Keyboard input (non-blocking) ----
             key = term.inkey(timeout=0)
-
             if key:
+                dirty = True
                 if key.name == "KEY_ENTER":
+                    
                     line = state.input_buffer.strip()
 
                     if line:
@@ -173,6 +202,7 @@ def run_tui(
 
             # ---- Drain monitor queue ----
             while not monitor.queue.empty():
+                dirty = True
                 evt = monitor.queue.get()
                 payload = evt["data"]
                 call_from = evt["from"]
@@ -211,7 +241,8 @@ def run_tui(
                 )
 
             # ---- Render ----
-            render(term, state)
+            if dirty:
+                render(term, state)
 
             # ---- Yield ----
             time.sleep(0.05)
