@@ -35,6 +35,7 @@ Requires-Dist: tomli; python_version < "3.11"
 Requires-Dist: tomli_w
 Requires-Dist: toml>=0.10
 Requires-Dist: blessed
+Requires-Dist: pyham-ax25
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-cov; extra == "dev"
@@ -53,11 +54,12 @@ It provides reusable logic for:
 
 CVAuth is designed to be used by multiple AX.25 applications,
 including Paracon, and future clients and servers.
+Example programs are installed with the api
 
 ## Basis
 
-CVAuth is based on the ChatterVox protocol by Brannon Dorsey,    KC3LZO
-and the code based on the awgoe server api PyHamPe by Martin F N Cooper, KD6YAM
+CVAuth is based on the [ChatterVox protocol](https://github.com/brannondorsey/chattervox) by Brannon Dorsey, KC3LZO
+and the code based on the AGWPE server api [pyham_pe](https://github.com/mfncooper/pyham_pe) by Martin F N Cooper, KD6YAM
 
 
 ## Project goals
@@ -71,15 +73,23 @@ and the code based on the awgoe server api PyHamPe by Martin F N Cooper, KD6YAM
 ## Non-goals
 
 - AX.25 socket or radio handling
-- uses pyham_pe to interface with an existing agwpe server such as direwolf
-- Connection management
+- handle tnc or direwolf connectivity
+- Connection management - ONLY chattervox protocol support which excludes connected frames for now
 - Encryption (signing only)
 
 ## Status
 
-This project is in early development.
-The initial focus is on defining clean APIs and extracting
-existing, working code from my Paracon-auth fork into a standalone library.
+This project is now at initial release
+The focus is on defining clean APIs and maybe 
+fulfilling my personal goals for an authenticated chat terminal.
+
+Other uses may be built using the example programs:
+cvauth_tui.py
+cvauth_reflector.py
+cvauth_cli.py
+
+for example I might build an authenticated radio chess program one day...
+or someone else could using my api and example code.
 
 ## Public API
 
@@ -96,30 +106,63 @@ from cvauth import (
 )
 ```
 
+## Installation
 
-## Prerelease installation
+CVAuth can be installed directly from GitHub. It is recommended to install inside a Python virtual environment.
 
-While the intention is to eventually incorporate installation by pip
+---
+Preparation
+You need to install and have a working direwolf version
+A great resource for that can be found here
+[The modern ham - Ultimate Direwolf Installation guide for packet radio - Windows and Linux}(https://youtu.be/iDQd1SoGgQE?si=fIfgTmMcmtIlO6qF)
 
-At a guess you could get the terminal user interface (such as it is)
-up and running with
 
-```python
 
-git clone https://github.com/mpurplenz/cvauth.git cvauth_dev
-pip install pyham-pe platformdirs cryptography tomli blessed
+### Option 1 — Install Directly from GitHub (Recommended)
 
-#cd to the root dir of the clone and go
-python -m cvauth.cvauth_tui
+Install the latest version:
 
-#If you have trouble with tomli you might want to try
-pip install tomli_w
-or
-pip install toml
+```bash
+cd ~
+mkdir -p cvauth
+cd cvauth
 
+python -m venv cvenv
+source cvenv/bin/activate
+
+python -m pip install --upgrade pip setuptools wheel
+
+pip install "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
+
+python -c "import cvauth, sys; print('cvauth OK, Python', sys.version)"
+```
+
+To run the terminal (for example) type
+
+```bash
+cvauth-tui
+```
+
+### Option 2 — Clone a developement version (Recommended for contributors)
+
+```bash
+cd ~
+mkdir cvauth-dev
+cd cvauth-dev
+
+python -m venv cvenv
+source cvenv/bin/activate
+
+git clone https://github.com/mrpurplenz/cvauth.git
+cd cvauth
+
+pip install -e .
 ```
 
 
+### Option 3 - Wait until a pypi pip install candidate is generated (no plans yet) 
+At the moment cvauth-tui defaults to AX25_PORT = 0, VIA=[], AGW_HOST = "127.0.0.1", AGW_PORT = 8000
+So it wont work without these and I havn't moved them to the config yet.
 
 ## Roadmap
 
@@ -129,7 +172,7 @@ pip install toml
 - [x] Implement CLI wrapper
 - [x] Add unit tests
 - [x] Add a simple reflector
-- [ ] Add a light weight terminal user interface
+- [x] Add a light weight terminal user interface
 - [ ] Publish to PyPI
 
 ## License

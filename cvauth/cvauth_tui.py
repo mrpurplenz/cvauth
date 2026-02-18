@@ -6,6 +6,7 @@ import signal
 from blessed import Terminal
 import pe.app
 import pe.monitor
+import ax25.netrom
 from pathlib import Path
 from .config import ensure_config, load_config, update_config_value, CVAuthConfig
 from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
@@ -67,7 +68,11 @@ class UIState:
         self.destination = "QST"
         self.verbose = False
         self.netrom_nodes = {}   # dict[str, dict] keyed by sender callsign
-
+        self.node_data = {}
+        self.app = None
+        self.via = None
+        self.scroll_offset = 0
+        self.body_y = 0
 # =====================
 # RENDER
 # =====================
@@ -80,7 +85,7 @@ def render(term: Terminal, state: UIState):
     HEADER_Y = 1
     PROMPT_Y = 1
     BODY_Y = height - HEADER_Y - PROMPT_Y
-
+    state.body_y = BODY_Y
     # Clear screen
     #print(term.home + term.clear)
     #print(term.home)
@@ -135,14 +140,26 @@ def render(term: Terminal, state: UIState):
         + header.ljust(width)
         + term.normal
     )
-
     # ----- Message area -----
-    visible_msgs = state.messages[-BODY_Y:]
+    total = len(state.messages)
+    start = max(0, total - (state.body_y) - state.scroll_offset)
+    end = start + state.body_y
+    visible_msgs = state.messages[start:end]
+    
     for i, msg in enumerate(visible_msgs):
+        line_no = 1 + HEADER_Y + i
+
         print(
-            term.move_yx(1+HEADER_Y + i, 0)
+            term.move_yx(line_no, 0)
             + msg[:width].ljust(width)
         )
+    
+    print(
+        term.move_yx(1, 0)
+        + term.black_on_white
+        + header.ljust(width)
+        + term.normal
+    ) 
 
     # ----- Prompt -----
     prompt = f"{state.callsign} > "
@@ -152,6 +169,7 @@ def render(term: Terminal, state: UIState):
         + prompt
         + term.normal
         + state.input_buffer
+        + term.normal
         + term.clear_eol
     )
 
@@ -174,7 +192,7 @@ def run_tui(
 ):
     term = Terminal()
     show_splash(term)
-    with term.fullscreen(), term.cbreak():
+    with term.fullscreen(), term.cbreak(), term.mouse_enabled():
         print(term.home + term.clear)
         render(term, state)
         while state.running:
@@ -183,6 +201,25 @@ def run_tui(
             key = term.inkey(timeout=0)
             if key:
                 dirty = True
+                
+                if key.name and key.name.startswith("MOUSE_"):
+                    
+		    # Scroll up (wheel up)
+                    if key.name == "MOUSE_SCROLL_UP":
+                        #state.messages.extend(str(state.body_y))
+                        #state.scroll_offset = min(
+                        #    state.scroll_offset + 1,
+                        #    max(0, len(state.messages) - state.body_y)
+                        #)
+                        state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
+                    # Scroll down (wheel down)
+                    elif key.name == "MOUSE_SCROLL_DOWN":
+                        #state.messages.extend("MOUSE_SCROLL_DOWN")
+                        #state.scroll_offset = max(
+                	#    state.scroll_offset - 1,
+                	#    0
+                        #)
+                        state.scroll_offset = max(0, state.scroll_offset-1)
                 if key.name == "KEY_ENTER":
                     
                     line = state.input_buffer.strip()
@@ -210,15 +247,14 @@ def run_tui(
                 call_to = evt["to"]
 
                 if is_netrom_nodes_packet(call_to, payload):
-                        netrom_data = decode_netrom_nodes(call_from, payload)
+                    netrom_data = decode_netrom_nodes(payload)
+                    if netrom_data:
+                        #state.messages.extend("[system detected NET/ROM data]")
+                        #state.node_data[call_from] = netrom_data  # overwrite per sender
+                        update_netrom_nodes(state, netrom_data['sender'], netrom_data) #add and update per sender
+                        formatted_lines = format_netrom_summary(netrom_data)
+                        state.messages.extend(formatted_lines)
 
-                        if netrom_data:
-                            # Store globally in state
-                            state.netrom_nodes[call_from] = netrom_data
-                
-                            # Export readable output
-                            for line in format_netrom_summary(netrom_data):
-                                state.messages.append(term.cyan + line + term.normal)
 
                         continue  # Skip CVAuth + text decode
         
@@ -343,6 +379,86 @@ def cmd_via(args, state):
     return True
 
 
+def cmd_netpoll(args, state):
+    """
+    /netpoll CALLSIGN
+    Send a NET/ROM routing table poll to a node.
+    """
+    app = state.app
+    if not args:
+        state.messages.append("[system] Usage: /netpoll CALLSIGN")
+        return False
+
+    target = args[0].strip().upper()
+    if not valid_callsign(target):
+        state.messages.append(f"[system] Invalid callsign: {target}")
+        return False
+
+    # Construct an empty NET/ROM poll frame
+    # PID 0xCF indicates a NET/ROM frame
+    poll_bytes = b'\x01'  # Simple poll indicator; some implementations may want actual payload
+    AX25_PORT = 0  # Use default, can later be mutable
+    VIA = state.via or []  # Use current via path
+
+    call_from = f"{state.callsign}-{state.ssid}"
+    call_to = target
+
+    state.messages.append(f"[TX] NET/ROM poll to {call_to} via {VIA if VIA else 'direct'}")
+
+    # Send the unproto packet
+    app.send_unproto(
+        AX25_PORT,
+        call_from,
+        call_to,
+        poll_bytes,
+        VIA,
+    )
+
+    return True
+    
+def cmd_tables(args, state):
+
+    if not hasattr(state, "netrom_nodes") or not state.netrom_nodes:
+        state.messages.append("[system] No NET/ROM node data available.")
+        return True
+
+    # If sender argument provided
+    if args:
+        sender = args[0].upper()
+
+        if sender not in state.netrom_nodes:
+            state.messages.append(
+                f"[error] No NET/ROM data for sender: {sender}"
+            )
+            return True
+
+        sender_nodes = state.netrom_nodes[sender]
+
+        netrom_data = {
+            "sender": sender,
+            "nodes": list(sender_nodes.values()),
+            "count": len(sender_nodes),
+        }
+
+        formatted_lines = format_netrom_summary(netrom_data)
+        state.messages.extend(formatted_lines)
+        return True
+
+    # No args → print all
+    for sender in sorted(state.netrom_nodes.keys()):
+
+        sender_nodes = state.netrom_nodes[sender]
+
+        netrom_data = {
+            "sender": sender,
+            "nodes": list(sender_nodes.values()),
+            "count": len(sender_nodes),
+        }
+
+        formatted_lines = format_netrom_summary(netrom_data)
+        state.messages.extend(formatted_lines)
+
+    return True
 
 COMMANDS = {
     "quit": {
@@ -384,6 +500,16 @@ COMMANDS = {
         "handler": cmd_via,
         "help": "Set the via nodes to pass through",
         "usage": "/via NODE"
+    },
+    "tables": {
+        "handler": cmd_tables,
+        "help": "Reports the netrom table",
+        "usage": "/tables [SENDER_CALLSIGN]"
+    },
+        "netpoll": {
+        "handler": cmd_netpoll,
+        "help": "Send a NET/ROM routing table poll to a node",
+        "usage": "/netpoll CALLSIGN"
     }
 }
 
@@ -506,73 +632,71 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
 # =====================
 
 def is_netrom_nodes_packet(call_to: str, payload: bytes) -> bool:
-    """
-    Identify NET/ROM NODES broadcast.
-    """
-    if call_to.strip().upper() != "NODES":
-        return False
+    return (
+        call_to.strip().upper() == "NODES"
+        and payload
+        and payload[0] == 0xFF
+    )
 
-    # Must contain at least count byte + one entry (~21 bytes minimum)
-    if len(payload) < 21:
-        return False
 
-    return True
 
-def decode_ax25_callsign(addr: bytes) -> str:
+def old_decode_ax25_callsign(addr: bytes) -> str:
     """
     Decode 7-byte shifted AX.25 callsign field.
     """
     call = ''.join(chr(b >> 1) for b in addr[:6]).strip()
     ssid = (addr[6] >> 1) & 0x0F
     return f"{call}-{ssid}" if ssid else call
-def decode_netrom_nodes(sender: str, payload: bytes) -> dict:
+    
+def decode_ax25_callsign(addr: bytes) -> str:
     """
-    Decode NET/ROM NODES broadcast (AGWPE monitor format).
+    Properly decode 7-byte NET/ROM callsign field.
     """
 
-    nodes = {}
+    if len(addr) != 7:
+        return "?"
+
+    # First 6 bytes = callsign characters
+    call = ""
+    for b in addr[:6]:
+        c = (b >> 1) & 0x7F
+        if c != 0x20:  # ignore padding spaces
+            call += chr(c)
+
+    # 7th byte = SSID + flags
+    ssid = (addr[6] >> 1) & 0x0F
+
+    if ssid:
+        return f"{call}-{ssid}"
+    return call
+
+    
+
+
+def decode_netrom_nodes(payload: bytes):
+    import ax25.netrom
 
     try:
-        # Skip NET/ROM header (commonly 15 bytes)
-        # Adjust if needed
-        offset = 15
-
-        if offset >= len(payload):
-            return {}
-
-        count = payload[offset]
-        offset += 1
-
-        for _ in range(count):
-            if offset + 21 > len(payload):
-                break
-
-            dest_call = decode_ax25_callsign(payload[offset:offset+7])
-            offset += 7
-
-            alias = payload[offset:offset+6].decode("ascii", "replace").strip()
-            offset += 6
-
-            best_neighbor = decode_ax25_callsign(payload[offset:offset+7])
-            offset += 7
-
-            quality = payload[offset]
-            offset += 1
-
-            nodes[dest_call] = {
-                "alias": alias,
-                "best_neighbor": best_neighbor,
-                "quality": quality,
-            }
-
+        rb = ax25.netrom.RoutingBroadcast.unpack(payload)
     except Exception:
-        return {}
+        return None
+
+    nodes = []
+    for d in rb.destinations:  # d is a Destination object
+        nodes.append({
+            "callsign": d.callsign,
+            "alias": d.mnemonic,
+            "via": d.best_neighbor,
+            "quality": d.best_quality,
+        })
 
     return {
-        "sender": sender,
-        "node_count": len(nodes),
+        "sender": rb.sender,
         "nodes": nodes,
+        "count": len(nodes),
     }
+
+
 
 def depr_decode_netrom_nodes(sender: str, payload: bytes) -> dict:
     """
@@ -615,24 +739,176 @@ def depr_decode_netrom_nodes(sender: str, payload: bytes) -> dict:
         "node_count": len(nodes),
         "nodes": nodes,
     }
+def format_netrom_summary(netrom_data, term=None):
+    """
+    Format NET/ROM RoutingBroadcast data into a sorted, colored terminal table.
 
-def format_netrom_summary(netrom_dict: dict) -> list[str]:
+    Args:
+        netrom_data: dict returned by decode_netrom_nodes()
+        term: blessed.Terminal instance for color (optional)
+
+    Returns:
+        list[str]: formatted lines for display in messages
     """
-    Convert decoded NET/ROM dict into printable lines.
-    """
+    if term is None:
+        class DummyTerm:
+            bold = normal = white = cyan = yellow = green = magenta = red = ""
+        term = DummyTerm()
+
     lines = []
-    sender = netrom_dict["sender"]
-    count = netrom_dict["node_count"]
+    sender = netrom_data.get("sender", "UNKNOWN")
+    node_count = netrom_data.get("count", 0)
+    nodes = netrom_data.get("nodes", [])
 
-    lines.append(f"[NET/ROM] {sender} advertises {count} nodes")
+    # Sort by quality descending
+    nodes = sorted(nodes, key=lambda n: n.get("quality", 0), reverse=True)
 
-    for call, entry in netrom_dict["nodes"].items():
-        lines.append(
-            f"   {call:<10} via {entry['best_neighbor']:<10} "
-            f"q={entry['quality']:<3} alias={entry['alias']}"
-        )
+    width = 64  # adjust for spacing
+
+    # Top border
+    lines.append(term.bold + "┌" + "─" * (width - 2) + "┐" + term.normal)
+
+    # Title
+    title = f"NET/ROM Routing Broadcast from {sender} — {node_count} nodes"
+    lines.append(term.bold + "│" + title.center(width - 2) + "│" + term.normal)
+
+    # Header separator
+    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
+
+    # Column headers
+    header = f"{'DESTINATION':<12} {'ALIAS':<12} {'VIA':<12} {'QUAL':>5}"
+    lines.append(term.bold + "│ " + header.ljust(width - 4) + " │" + term.normal)
+
+    # Header-bottom separator
+    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
+
+    # Table rows
+    for n in nodes:
+        dest = str(n.get("callsign", ""))[:12]
+        alias = str(n.get("alias", ""))[:12]
+        via = str(n.get("via", ""))[:12]
+        qual = n.get("quality", 0)
+
+        # Color based on quality
+        if qual >= 128:
+            color = term.green + term.bold
+        elif qual >= 120:
+            color = term.green
+        elif qual >= 110:
+            color = term.yellow
+        else:
+            color = term.magenta + term.bold
+
+        line = f"{dest:<12} {alias:<12} {via:<12} {str(qual):>5}"
+        lines.append(term.bold + "│ " + line.ljust(width - 4) + " │" + term.normal)
+        
+
+    # Bottom border
+    lines.append(term.bold + "└" + "─" * (width - 2) + "┘" + term.normal)
 
     return lines
+
+def old_format_netrom_summary(netrom_data, term=None):
+    """
+    Format NET/ROM RoutingBroadcast data into a professional terminal table.
+
+    Args:
+        netrom_data: dict returned by decode_netrom_nodes()
+        term: blessed.Terminal instance for color (optional)
+
+    Returns:
+        list[str]: formatted lines for display in messages
+    """
+    if term is None:
+        class DummyTerm:
+            bold = normal = white = cyan = yellow = green = magenta = ""
+        term = DummyTerm()
+
+    lines = []
+    sender = netrom_data.get("sender", "UNKNOWN")
+    node_count = netrom_data.get("count", 0)
+    nodes = netrom_data.get("nodes", [])
+
+    # Table width
+    width = 60
+
+    # Top border
+    lines.append(term.bold + "┌" + "─" * (width - 2) + "┐" + term.normal)
+
+    # Title
+    title = f"NET/ROM Routing Broadcast from {sender} — {node_count} nodes"
+    lines.append(term.bold + "│" + title.center(width - 2) + "│" + term.normal)
+
+    # Header separator
+    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
+
+    # Column headers
+    header = f"{'DESTINATION':<12} {'ALIAS':<12} {'VIA':<12} {'QUAL':>4}"
+    lines.append(term.bold + "│ " + header.ljust(width - 4) + " │" + term.normal)
+
+    # Header-bottom separator
+    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
+
+    # Table rows
+    for n in nodes:
+        dest = str(n.get("callsign", ""))[:12]
+        alias = str(n.get("alias", ""))[:12]
+        via = str(n.get("via", ""))[:12]
+        qual = str(n.get("quality", ""))
+
+        # Optional coloring
+        color = term.green if n.get("quality", 0) > 110 else term.yellow
+        line = f"│ {dest:<12} {alias:<12} {via:<12} {qual:>4} │"
+        lines.append(color + line + term.normal)
+
+    # Bottom border
+    lines.append(term.bold + "└" + "─" * (width - 2) + "┘" + term.normal)
+
+    return lines
+
+def update_netrom_nodes(state, sender, netrom_data):
+    """
+    Merge decoded NET/ROM nodes into state.netrom_nodes
+    without overwriting previous entries.
+    """
+
+    if not netrom_data or "nodes" not in netrom_data:
+        return False
+
+    # Ensure top-level container exists
+    if not hasattr(state, "netrom_nodes"):
+        state.netrom_nodes = {}
+
+    # Ensure sender entry exists
+    if sender not in state.netrom_nodes:
+        state.netrom_nodes[sender] = {}
+
+    sender_table = state.netrom_nodes[sender]
+
+    updated = False
+
+    for node in netrom_data["nodes"]:
+        callsign = node["callsign"]
+
+        existing = sender_table.get(callsign)
+
+        if not existing:
+            # New node
+            sender_table[callsign] = node.copy()
+            updated = True
+            continue
+
+        # Update only if something changed
+        if (
+            existing.get("alias") != node.get("alias") or
+            existing.get("via") != node.get("via") or
+            existing.get("quality") != node.get("quality")
+        ):
+            sender_table[callsign] = node.copy()
+            updated = True
+
+    return updated
+
 
 
 # =====================
@@ -730,6 +1006,7 @@ def main():
 
     #Initialise the state data
     state = UIState()
+    state.app = app
 
     #Fetch config and load to the state
     config_path = ensure_config()

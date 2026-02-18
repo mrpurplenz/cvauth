@@ -21,6 +21,7 @@ dependencies = [
     "tomli_w",
     "toml>=0.10",
     "blessed",
+    "pyham-ax25",
 ]
 
 [project.optional-dependencies]

@@ -4,6 +4,7 @@ cryptography>=41.0
 tomli_w
 toml>=0.10
 blessed
+pyham-ax25
 
 [:python_version < "3.11"]
 tomli
