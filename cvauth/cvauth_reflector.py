@@ -407,7 +407,7 @@ class CVAuthReflector:
 
 
     def send_beacon(self,text):
-        test_text = "CVAuth UI frame Reflector - Reflecting unproto messages with destination ZL2DRS"+text
+        test_text = "Authentication Reflector - Decode with cvauth from: https://github.com/mrpurplenz/cvauth "+text
         print(f"[INFO] Sending local test beacon: {test_text}")
         self.app.send_unproto(
             AX25_PORT,
@@ -524,7 +524,26 @@ class CVAuthReflector:
         # Start reflector
         print("[*] Starting CVAuth reflector")
         self.app.use_monitor(self.monitor)
-        self.app.start(AGWPE_HOST, AGWPE_PORT)
+
+
+        try:
+            self.app.start(AGWPE_HOST, AGWPE_PORT)
+
+        except ConnectionRefusedError:
+            print(f"[!] Cannot connect to AGWPE server at {AGWPE_HOST}:{AGWPE_PORT}")
+            print("[!] Is the port accessable and open and your TNC running? eg. direwolf")
+            print("[!] Is AGWPE enabled on your TNC config? ie (for direwolf conf) ")
+            print(f"[!] AGWPORT {AGWPE_PORT}")
+            sys.exit(1)
+
+        except socket.gaierror:
+            print(f"[!] Invalid AGWPE host: {AGWPE_HOST}")
+            sys.exit(1)
+
+        except Exception as e:
+            print(f"[!] Unexpected error connecting to AGWPE server: {e}")
+            sys.exit(1)
+
         self.app.enable_monitoring = True
 
     def stop(self):
