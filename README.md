@@ -11,7 +11,12 @@ It provides reusable logic for:
 
 CVAuth is designed to be used by multiple AX.25 applications,
 including Paracon, and future clients and servers.
-Example programs are installed with the api
+Example programs such as a simple authenticated chat app terminal user interface as shown below are included
+
+## Terminal UI
+
+![Terminal Splash screen](images/cvauth-tui_splash.png)
+![Terminal Screenshot](images/cvauth-tui_with_direwolf.png)
 
 ## Basis
 
