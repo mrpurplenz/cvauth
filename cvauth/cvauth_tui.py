@@ -179,7 +179,44 @@ def render(term: Terminal, state: UIState):
         end="",
         flush=True,
     )
+    
+def bytes_to_hex_escape(data: bytes) -> str:
+    """
+    Convert raw bytes to a fully escaped \\xHH string representation.
 
+    This is a lossless, byte-accurate representation suitable for:
+        - Debug logging
+        - Terminal-safe display
+        - Copy/paste into test cases
+
+    Args:
+        data (bytes): Raw byte sequence.
+
+    Returns:
+        str: String like '\\x04\\x7a\\x39...'
+    """
+    return ''.join(f'\\x{b:02x}' for b in data)  
+    
+def bytes_to_display_text(data: bytes) -> str:
+    """
+    Convert raw bytes to terminal-safe text.
+
+    - Decodes UTF-8 safely
+    - Replaces invalid sequences
+    - Escapes control characters (except newline, tab)
+    """
+    text = data.decode("utf-8", errors="replace")
+
+    sanitized = []
+    for ch in text:
+        if ch in ("\n", "\r", "\t"):
+            sanitized.append(ch)
+        elif ord(ch) < 32 or ord(ch) == 127:
+            sanitized.append(f"\\x{ord(ch):02x}")
+        else:
+            sanitized.append(ch)
+
+    return "".join(sanitized)
 
 # =====================
 # MAIN LOOP
@@ -192,7 +229,8 @@ def run_tui(
 ):
     term = Terminal()
     show_splash(term)
-    with term.fullscreen(), term.cbreak(), term.mouse_enabled():
+    #with term.fullscreen(), term.cbreak(), term.mouse_enabled():
+    with term.fullscreen(), term.cbreak():
         print(term.home + term.clear)
         render(term, state)
         while state.running:
@@ -264,7 +302,9 @@ def run_tui(
                 auth_status=(result["auth_status"])
                 sanitised_payload = result["sanitised_payload"]
                 try:
-                    text = sanitised_payload.decode("utf-8", "replace")
+                    #text = bytes_to_display_text(sanitised_payload)
+                    #text = sanitised_payload.decode("utf-8", "replace")
+                    text = sanitised_payload
                 except Exception:
                     text = repr(sanitised_payload)
 
@@ -284,6 +324,7 @@ def run_tui(
                         msg_colour = term.orange
                 RXheader = "[RX]"
                 if state.verbose:
+                    state.messages.append(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}")
                     RXheader = f"[RX {result['reason']}]"
                 state.messages.append(
                     msg_colour +
@@ -578,6 +619,10 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
     Returns dict:
       {
         "auth_status": AuthType,        # One of UK, NS, SV, NK, IV
+        "is_CV": bool,                  # True if chattervox packet
+        "version": int,                 # verson no. of CV protocol 0 if not CV
+        "signed": bool,                 # True if signed bit set
+        "compressed":bool,              # True if compressed bit set
         "authentic": bool,              # True if valid
         "reason": str,                  # String contianing the reason for the status
         "signer": str|None,   		# Callsign of signer if known
@@ -598,20 +643,21 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
         packet = CVPacket.decode(raw=received_payload, from_call=call_from)
     except Exception:
         # Not a CVAuth packet at all
-        text = payload.decode("utf-8", "replace")
+        #text = bytes_to_display_text(received_payload)
+        text = received_payload
         return {
             "auth_status": AuthType.UNKNOWN,
-            "authentic": "Unknown packet format",
-            "reason": None,
+            "authentic": False,
+            "reason": "Unknown packet format",
             "signer": None,
             "call_from": call_from,
-            "sanitised_payload": text.strip(),
+            "sanitised_payload": bytes_to_hex_escape(received_payload),
         }
 
     # Use your auth module to verify the packet
     result = verify_packet(packet, keyring)
-    print(packet)
-    print(result)
+    #print(packet)
+    #print(result)
 
     # Map AuthType to signed/valid
     signed = result.auth_type != AuthType.NOTSIGNED and result.auth_type != AuthType.UNKNOWN
@@ -620,6 +666,10 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
 
     return {
         "auth_status": result.auth_type,
+        "is_CV": packet.magic,                  
+        "version": packet.version,                
+        "signed": packet.signed,                 
+        "compressed":packet.compressed,              
         "authentic": authenticity,
         "reason": result.reason if result.reason else None,
         "signer": result.signer if signed else None,
@@ -926,7 +976,10 @@ def send_message(line, state, app):
     call_from = f"{state.callsign}-{state.ssid}"
     signing = state.signing
     if signing:
-        reply_bytes = sign_outgoing(line, state)
+        signed_packet = sign_outgoing(line, state)
+        reply_bytes = signed_packet.encode()
+        if state.verbose:
+            state.messages.append(f"[packet received: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}")
     else:
         reply_bytes = line.encode('utf-8')
 

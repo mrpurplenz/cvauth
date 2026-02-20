@@ -83,6 +83,7 @@ class CVPacket:
     - Enforce authentication policy
 
     Attributes:
+        magic: True when the payload is chattervox by way of magic bytes
         from_call: Optional AX.25 callsign of sender.
         payload: Message payload as bytes.
         version: Protocol version number.
@@ -91,13 +92,14 @@ class CVPacket:
         signature: Optional signature bytes.
         raw: Raw wire-format packet bytes (if encoded or decoded).
     """
-
+    magic: bool = False
     from_call: Optional[str] = None
     payload: bytes = None
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
     signature: Optional[bytes] = None
+    decode_error: Optional[str] = None
     raw: Optional[bytes] = None
 
     def __post_init__(self) -> None:
@@ -154,6 +156,7 @@ class CVPacket:
 
         out = bytearray()
         out += MAGIC_BYTES
+        self.magic = True
         out += self.version.to_bytes(1, "big")
         out += flags_byte
 
@@ -193,9 +196,11 @@ class CVPacket:
             This method does NOT verify signatures.
             Signature validation must be performed separately.
         """
+        magic = False
         if raw[:2] != MAGIC_BYTES:
             return cls(from_call=from_call, payload=raw, raw=raw)
-
+        else:
+            magic = True
         if len(raw) < 4:
             raise ValueError("Packet too short to be CVPacket")
 
@@ -207,30 +212,37 @@ class CVPacket:
 
         idx = 4
         signature = None
+        decode_error = None
 
         if signed:
             if idx >= len(raw):
-                raise ValueError("Missing signature length field")
-            sig_len = raw[idx]
-            idx += 1
+                decode_error = "Missing signature length field"
+                #raise ValueError("Missing signature length field")
+            else:
+                sig_len = raw[idx]
+                idx += 1
 
             if idx + sig_len > len(raw):
-                raise ValueError("Invalid signature length")
-
-            signature = raw[idx:idx + sig_len]
-            idx += sig_len
+                decode_error = "Invalid signature length"
+                #raise ValueError("Invalid signature length")
+            else:
+                signature = raw[idx:idx + sig_len]
+                idx += sig_len
 
         payload = raw[idx:]
 
         if compressed:
             payload = zlib.decompress(payload)
+            #payload = payload
 
         return cls(
+            magic = magic,
             from_call=from_call,
             payload=payload,
             version=version,
             signed=signed,
             compressed=compressed,
             signature=signature,
+            decode_error=decode_error,
             raw=raw,
         )
