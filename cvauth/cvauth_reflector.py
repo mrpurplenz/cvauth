@@ -198,8 +198,8 @@ def request_keypair_paths(config) -> tuple[str, str]:
 AGWPE_HOST = "127.0.0.1"
 AGWPE_PORT = 8000
 
-LISTEN_CALLSIGN = "ZL2DRS"
-TX_CALLSIGN = "ZL2DRS"
+LISTEN_CALLSIGN = "N0CALL"
+TX_CALLSIGN = "N0CALL"
 AX25_PORT = 0
 VIA = []  # e.g. ["WIDE1-1", "WIDE2-1"]
 
@@ -253,8 +253,8 @@ class _Monitor(pe.monitor.Monitor):
 
     def monitored_unproto(self, port, call_from, call_to, text, data):
         # Only care about UI frames addressed to us
-        if call_to != LISTEN_CALLSIGN:
-            return
+        #if call_to != LISTEN_CALLSIGN:
+        #    return
 
         self._queue.put((
             MonitorType.UNPROTO_INFO,
@@ -264,6 +264,7 @@ class _Monitor(pe.monitor.Monitor):
             text,
             data
         ))
+        return
 
 # =====================
 # CVAUTH PLACEHOLDERS
@@ -392,17 +393,29 @@ class CVAuthReflector:
         self.running = True
 
 
-    def send_test_beacon(self):
+    def send_start_beacon(self):
         test_text = "CVAuth reflector heartbeat test"
         print(f"[INFO] Sending local test beacon: {test_text}")
+        local_call = "N0CALL"
         self.app.send_unproto(
             AX25_PORT,
-            "ZL2DRS",
-            "ZL2DRS",  # send to self
+            local_call,
+            "QST",  # send to self
             test_text.encode("utf-8"),
             VIA,
         )
 
+
+    def send_beacon(self,text):
+        test_text = "CVAuth UI frame Reflector - Reflecting unproto messages with destination ZL2DRS"+text
+        print(f"[INFO] Sending local test beacon: {test_text}")
+        self.app.send_unproto(
+            AX25_PORT,
+            "ZL2DRS",
+            "QST",  # send to all
+            test_text.encode("utf-8"),
+            VIA,
+        )
 
     def handle_incoming_packet(self, src, dest, packet):
         if not packet.is_signed():
@@ -525,13 +538,22 @@ class CVAuthReflector:
 
     def run(self):
         q = self.monitor.event_queue
+        
+        last_beacon = time.time()
         while self.running:
+            now = time.time()
+            
+            BEACON_INTERVAL = 1800
+            if now - last_beacon >= BEACON_INTERVAL:
+                self.send_beacon("")
+                last_beacon = now
+                
+            reflect = False    
             try:
-                #print("trying to read queue")
-                #print(q.get(timeout=0.5))
                 kind, port, call_from, call_to, text, received_payload = q.get(timeout=0.5)
-                if self.callsign == call_to:
-                    print("LOCATED UI PACKET FOR ME")
+                if self.config.identity.callsign == call_to:
+                    reflect = True
+                    print(f"LOCATED UI PACKET FOR {self.callsign}")
                     #print(f"[DEBUG] Raw event: kind={kind}, port={port}, from={call_from}, to={call_to}, text={text}, data_len={len(data) if data else 0}")
             except queue.Empty:
                 continue
@@ -541,25 +563,25 @@ class CVAuthReflector:
             #    continue
 
             print(f"[RX] {call_from} → {call_to}: {text}")
+            if reflect:
+                result = verify_cvauth(received_payload, call_from, self.keyring)
+                print(result)
+                reply_bytes = make_reflector_message(result, self.callsign, self.private_key)
 
-            result = verify_cvauth(received_payload, call_from, self.keyring)
-            print(result)
-            reply_bytes = make_reflector_message(result, self.callsign, self.private_key)
+                #code to see the packet I created
+                #if result["auth_status"] == AuthType.NOTSIGNED:
+                #    created_packet = CVPacket.decode(reply_bytes, from_call=self.callsign)
+                #    print(created_packet)
 
-            #code to see the packet I created
-            #if result["auth_status"] == AuthType.NOTSIGNED:
-            #    created_packet = CVPacket.decode(reply_bytes, from_call=self.callsign)
-            #    print(created_packet)
+                print(f"[TX] {reply_bytes}")
 
-            print(f"[TX] {reply_bytes}")
-
-            self.app.send_unproto(
-                AX25_PORT,
-                call_to,
-                call_from,      # reply directly to sender
-                reply_bytes,
-                VIA,
-            )
+                self.app.send_unproto(
+                    AX25_PORT,
+                    call_to,
+                    call_from,      # reply directly to sender
+                   reply_bytes,
+                    VIA,
+                )
 
 # =====================
 # SIGNAL HANDLING
@@ -575,7 +597,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     reflector.start()
-    reflector.send_test_beacon()
+    #reflector.send_start_beacon()
     reflector.run()
 
 if __name__ == "__main__":
