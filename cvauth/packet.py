@@ -1,29 +1,112 @@
-# cvauth/packet.py
+"""
+cvauth.packet
+=============
 
-from enum import Enum
+Packet encoding and decoding for the CVAuth authentication protocol.
+
+This module defines the wire format used to transport authenticated
+payloads over AX.25 connections.
+
+The protocol provides:
+
+- Magic header detection
+- Versioned packet format
+- Optional payload compression (zlib)
+- Optional digital signature attachment
+- Transparent decoding of signed/compressed frames
+
+This layer is intentionally cryptography-agnostic. Signature generation
+and verification are handled elsewhere. This module only transports
+signature bytes.
+
+Wire Format (Version 1)
+-----------------------
+
+All multi-byte values are big-endian.
+
++------------+---------+------------------------------------------+
+| Offset     | Size    | Description                              |
++============+=========+==========================================+
+| 0x00       | 2 bytes | Magic header (0x7a39)                    |
+| 0x02       | 1 byte  | Protocol version                         |
+| 0x03       | 1 byte  | Flags                                    |
+|            |         |   bit 1 → Signed flag                    |
+|            |         |   bit 0 → Compression flag               |
+| 0x04       | 1 byte  | [optional] Signature length (if signed) |
+| 0x05       | N bytes | [optional] Signature                     |
+| ...        | M bytes | Payload (raw or zlib-compressed)         |
++------------+---------+------------------------------------------+
+
+If the magic header is not present, the payload is treated as a raw,
+unauthenticated message.
+
+This design allows CVAuth to coexist with legacy AX.25 traffic.
+"""
+
 from dataclasses import dataclass
 from typing import Optional, ClassVar
 import zlib
 
 MAGIC_BYTES: ClassVar[bytes] = b"\x7a\x39"
+"""
+Protocol magic header used to identify CVAuth packets.
+"""
+
 PROTOCOL_VERSION: ClassVar[int] = 1
+"""
+Current protocol version.
+"""
+
 
 @dataclass
 class CVPacket:
     """
-    Represents a Chattervox packet object.
+    Represents a single CVAuth protocol packet.
+
+    A CVPacket encapsulates:
+
+    - An optional sender callsign
+    - A payload (bytes)
+    - Optional compression
+    - Optional digital signature
+    - Encoded raw wire representation
+
+    This class is responsible for:
+
+    - Encoding structured data into wire format
+    - Decoding raw AX.25 payloads into structured objects
+
+    It does NOT:
+
+    - Perform signature verification
+    - Perform key lookup
+    - Enforce authentication policy
+
+    Attributes:
+        from_call: Optional AX.25 callsign of sender.
+        payload: Message payload as bytes.
+        version: Protocol version number.
+        signed: True if packet includes a signature.
+        compressed: True if payload was compressed.
+        signature: Optional signature bytes.
+        raw: Raw wire-format packet bytes (if encoded or decoded).
     """
+
     from_call: Optional[str] = None
     payload: bytes = None
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
     signature: Optional[bytes] = None
-
-    #generally created after encoding or recieving
     raw: Optional[bytes] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """
+        Validate payload type after initialization.
+
+        Raises:
+            TypeError: If payload is not bytes-like.
+        """
         if self.payload is None:
             return
 
@@ -34,45 +117,38 @@ class CVPacket:
                 f"CVPacket.payload must be bytes, not {type(self.payload).__name__}"
             )
 
-
-
-
     def encode(self) -> bytes:
         """
-        Encode this payload into a Chattervox Signed AX.25 payload.
-        if you want the non encoded packet just request CVPacket.payload
+        Encode this packet into CVAuth wire format.
 
-
-        Assemble the packet payload into bytes for AX.25 transmission.
-
+        Compression is automatically applied if it reduces payload size.
+        Signature presence determines the signed flag.
 
         Returns:
-            bytes: Complete payload including header, optional signature, and message.
+            bytes: Encoded packet ready for AX.25 transmission.
 
-        Payload layout:
-            - [0x0000] 16 bits  Magic Header b'x7a39'
-            - [0x0002] 8 bits   Version Byte b'x01' for version 1
-            - [0x0003] 6 bits   Reserved/Unused
-            - [0x0003] 1 bit    Digital Signature Flag 
-            - [0x0003] 1 bit    Compression Flag
-            - [0x0004] [opt] 8 bits Signature Length
-            - [0x0005] [opt] Signature (Signature Length bytes)
-            - [rest]   Message (raw or compressed bytes)
+        Raises:
+            ValueError: If signature is invalid or too long.
+
+        Notes:
+            - Compression uses zlib.
+            - Signature length is limited to 255 bytes.
+            - `self.raw` is updated with the encoded result.
         """
-
-
-        # compression
         bytes_payload = self.payload
         compressed_payload = zlib.compress(bytes_payload)
+
+        # Determine whether compression is beneficial
         if len(compressed_payload) < len(self.payload):
             self.compressed = True
+            payload_to_encode = compressed_payload
         else:
             self.compressed = False
+            payload_to_encode = self.payload
 
-        #Reset self.signed to make the presence of a signature authoritative for signing
+        # Signature presence defines signed state
         self.signed = self.signature is not None
-        
-        # flags byte
+
         flags = (int(self.signed) << 1) | int(self.compressed)
         flags_byte = flags.to_bytes(1, "big")
 
@@ -85,27 +161,41 @@ class CVPacket:
             if self.signature is None:
                 raise ValueError("signed=True but no signature present")
             if len(self.signature) > 255:
-                raise ValueError("Signature too long")
+                raise ValueError("Signature too long (max 255 bytes)")
             out += len(self.signature).to_bytes(1, "big")
             out += self.signature
-            
-        if self.compressed:
-            payload_to_encode = compressed_payload
-        else:
-            payload_to_encode = self.payload
+
         out += payload_to_encode
-        
+
         self.raw = bytes(out)
         return self.raw
 
     @classmethod
     def decode(cls, raw: bytes, from_call: Optional[str] = None) -> "CVPacket":
         """
-        Decode an AX.25 payload into a CVPacket.
-        No verification.
+        Decode raw AX.25 payload into a CVPacket.
+
+        If the magic header is absent, the packet is treated as
+        unauthenticated raw payload.
+
+        Args:
+            raw: Raw AX.25 payload bytes.
+            from_call: Optional callsign of sender.
+
+        Returns:
+            CVPacket: Parsed packet object.
+
+        Raises:
+            ValueError: If packet structure is invalid.
+            zlib.error: If compressed payload cannot be decompressed.
+
+        Security:
+            This method does NOT verify signatures.
+            Signature validation must be performed separately.
         """
         if raw[:2] != MAGIC_BYTES:
             return cls(from_call=from_call, payload=raw, raw=raw)
+
         if len(raw) < 4:
             raise ValueError("Packet too short to be CVPacket")
 
@@ -119,10 +209,14 @@ class CVPacket:
         signature = None
 
         if signed:
+            if idx >= len(raw):
+                raise ValueError("Missing signature length field")
             sig_len = raw[idx]
             idx += 1
+
             if idx + sig_len > len(raw):
                 raise ValueError("Invalid signature length")
+
             signature = raw[idx:idx + sig_len]
             idx += sig_len
 
@@ -131,7 +225,7 @@ class CVPacket:
         if compressed:
             payload = zlib.decompress(payload)
 
-        pkt = cls(
+        return cls(
             from_call=from_call,
             payload=payload,
             version=version,
@@ -140,4 +234,3 @@ class CVPacket:
             signature=signature,
             raw=raw,
         )
-        return pkt
