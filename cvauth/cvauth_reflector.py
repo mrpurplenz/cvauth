@@ -39,6 +39,7 @@ from .config import ensure_config, load_config, update_config_value
 from .auth import load_private_key, generate_and_save_keypair, ensure_bytes
 from .auth import sign_packet, verify_packet, AuthType, AuthResult
 from .packet import CVPacket
+from .transport import connect_agwpe
 
 import re
 
@@ -525,24 +526,25 @@ class CVAuthReflector:
         print("[*] Starting CVAuth reflector")
         self.app.use_monitor(self.monitor)
 
+        connect_agwpe(self.app, AGWPE_HOST, AGWPE_PORT)
 
-        try:
-            self.app.start(AGWPE_HOST, AGWPE_PORT)
+        #try:
+        #    self.app.start(AGWPE_HOST, AGWPE_PORT)
 
-        except ConnectionRefusedError:
-            print(f"[!] Cannot connect to AGWPE server at {AGWPE_HOST}:{AGWPE_PORT}")
-            print("[!] Is the port accessable and open and your TNC running? eg. direwolf")
-            print("[!] Is AGWPE enabled on your TNC config? ie (for direwolf conf) ")
-            print(f"[!] AGWPORT {AGWPE_PORT}")
-            sys.exit(1)
+        #except ConnectionRefusedError:
+        #    print(f"[!] Cannot connect to AGWPE server at {AGWPE_HOST}:{AGWPE_PORT}")
+        #    print("[!] Is the port accessable and open and your TNC running? eg. direwolf")
+        #    print("[!] Is AGWPE enabled on your TNC config? ie (for direwolf conf) ")
+        #    print(f"[!] AGWPORT {AGWPE_PORT}")
+        #    sys.exit(1)
 
-        except socket.gaierror:
-            print(f"[!] Invalid AGWPE host: {AGWPE_HOST}")
-            sys.exit(1)
+        #except socket.gaierror:
+        #    print(f"[!] Invalid AGWPE host: {AGWPE_HOST}")
+        #    sys.exit(1)
 
-        except Exception as e:
-            print(f"[!] Unexpected error connecting to AGWPE server: {e}")
-            sys.exit(1)
+        #except Exception as e:
+        #    print(f"[!] Unexpected error connecting to AGWPE server: {e}")
+        #    sys.exit(1)
 
         self.app.enable_monitoring = True
 

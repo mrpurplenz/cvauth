@@ -12,7 +12,7 @@ from .config import ensure_config, load_config, update_config_value, CVAuthConfi
 from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
 from .packet import CVPacket
 from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
-
+from .transport import connect_agwpe
 
 # ====================
 # CONFIGURE
@@ -1084,7 +1084,9 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     print("[*] Starting AGW connection")
-    app.start(AGW_HOST, AGW_PORT)
+    connect_agwpe(app, AGW_HOST, AGW_PORT)
+    #app.start(AGW_HOST, AGW_PORT)
+
     app.enable_monitoring = True
 
     try:
