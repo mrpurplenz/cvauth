@@ -610,7 +610,7 @@ def sign_outgoing(line, state):
     private_key_file = config.resolve_path(private_key_Posix)
     private_key_deserial = load_private_key(private_key_file)
     sign_packet(pkt, private_key_deserial)
-    return pkt.encode()
+    return pkt
 
 def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring):
     """
@@ -977,7 +977,7 @@ def send_message(line, state, app):
     signing = state.signing
     if signing:
         signed_packet = sign_outgoing(line, state)
-        reply_bytes = signed_packet.encode()
+        reply_bytes = sign_outgoing(line, state).encode()
         if state.verbose:
             state.messages.append(f"[packet received: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}")
     else:
