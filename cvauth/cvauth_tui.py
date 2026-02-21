@@ -979,7 +979,8 @@ def send_message(line, state, app):
         signed_packet = sign_outgoing(line, state)
         reply_bytes = sign_outgoing(line, state).encode()
         if state.verbose:
-            state.messages.append(f"[packet received: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}")
+            state.messages.append(f"[packet sent: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}]")
+            state.messages.append(f"[packet bytes: {reply_bytes}, payload bytes:  {signed_packet.payload}")
     else:
         reply_bytes = line.encode('utf-8')
 

@@ -92,9 +92,9 @@ class CVPacket:
         signature: Optional signature bytes.
         raw: Raw wire-format packet bytes (if encoded or decoded).
     """
-    magic: bool = False
+    magic: Optional[bool] = False
     from_call: Optional[str] = None
-    payload: bytes = None
+    payload: Optional[bytes] = None
     version: int = PROTOCOL_VERSION
     signed: bool = False
     compressed: bool = False
