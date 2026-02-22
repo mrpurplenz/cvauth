@@ -267,7 +267,7 @@ def run_tui(
                         if line.startswith("/"):
                             dispatch_command(line, state)
                         else:
-                            send_message(line, state, app)
+                            send_message(line, state, app, term)
 
                     state.input_buffer = ""
 
@@ -967,7 +967,7 @@ def update_netrom_nodes(state, sender, netrom_data):
 # TRANSMISSION
 # =====================
 
-def send_message(line, state, app):
+def send_message(line, state, app, term):
     # Stub: later this will go through AX.25 / signing / etc
     state.messages.append(f"[TX] {line}")
 
@@ -985,6 +985,9 @@ def send_message(line, state, app):
             state.messages.append(f"[packet bytes: {reply_bytes}, payload bytes:  {signed_packet.payload}")
     else:
         reply_bytes = line.encode('utf-8')
+    
+    if state.verbose: 
+        escaped_bytes = scan_and_warn(reply_bytes, state, term)
 
     app.send_unproto(
         AX25_PORT,
@@ -993,7 +996,28 @@ def send_message(line, state, app):
         reply_bytes,
         VIA,
     )
+    
+def scan_and_warn(reply_bytes: bytes, state, term):
+    """Scan bytes for control characters and enqueue a warning if found."""
+    escaped = []
+    found_control = False
+    CONTROL_BYTES = set(range(0x00, 0x20)) | {0x7F}
+    for b in reply_bytes:
+        hex_str = f'\\x{b:02x}'
+        if b in CONTROL_BYTES:
+            escaped.append(term.bold(hex_str))
+            found_control = True
+        else:
+            escaped.append(hex_str)
+    escaped_str = ''.join(escaped)
+    
+    if found_control:
+        state.messages.append("[WARNING] tx msg contains control characters that may be truncated in older software")
+        state.messages.append("[WARNING] please ensure Direwolf >=1.8.1")
+        state.messages.append(f"[TX bytes] {escaped_str}")
 
+    
+    return ''.join(f'\\x{b:02x}' for b in reply_bytes)  # return original hex-escaped string if needed
 
 # =====================
 # SPLASH
@@ -1138,7 +1162,7 @@ def main():
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
-
+    print("CVAuth Tui - Version 0.1.0 by ZL2DRS")
     print("[*] Starting AGW connection")
     connect_agwpe(app, AGW_HOST, AGW_PORT)
     #app.start(AGW_HOST, AGW_PORT)
@@ -1149,9 +1173,17 @@ def main():
         run_tui(app, monitor, state)
     finally:
         print("[*] Stopping")
-        app.enable_monitoring = False
-        app.stop()
-
+        try:
+            app.enable_monitoring = False
+        except BrokenPipeError:
+            # socket already closed, ignore
+            pass
+        try:
+            app.stop()
+        except BrokenPipeError:
+            # socket already closed, ignore
+            pass
+        
 
 if __name__ == "__main__":
     main()
