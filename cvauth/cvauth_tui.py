@@ -13,6 +13,7 @@ from .config_utils import request_callsign, request_ssid, request_keypair_paths,
 from .packet import CVPacket
 from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
 from .transport import connect_agwpe
+import os
 
 # ====================
 # CONFIGURE
@@ -298,13 +299,13 @@ def run_tui(
         
 
                 #pass the payload to authentication process
-                result = verify_cvauth(payload, evt["from"], state.keyring)
+                result = verify_cvauth(evt["data"], evt["from"], state.keyring)
                 auth_status=(result["auth_status"])
                 sanitised_payload = result["sanitised_payload"]
                 try:
                     #text = bytes_to_display_text(sanitised_payload)
                     #text = sanitised_payload.decode("utf-8", "replace")
-                    text = sanitised_payload
+                    text = sanitised_payload.decode("utf-8", "replace")
                 except Exception:
                     text = repr(sanitised_payload)
 
@@ -325,6 +326,7 @@ def run_tui(
                 RXheader = "[RX]"
                 if state.verbose:
                     state.messages.append(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}")
+                    state.messages.append(f"[received bytes from pyham_pe: {bytes_to_hex_escape(evt['data'])}]")
                     RXheader = f"[RX {result['reason']}]"
                 state.messages.append(
                     msg_colour +
