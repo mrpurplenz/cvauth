@@ -61,7 +61,7 @@ They do NOT include:
 The caller is responsible for ensuring the correct canonical
 payload is signed.
 """
-
+import re
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -94,6 +94,46 @@ class AuthType(Enum):
     VALID       = "SV"
     KEYNOTFOUND = "NK"
     INVALID     = "IV"
+    
+CALL_RE = re.compile(r'^([A-Z0-9]{1,6})(?:-(\d{1,2}))?$')
+
+class InvalidStationError(ValueError):
+    pass
+
+def call_from_station(station: str) -> str:
+    """
+    Normalize and validate an AX.25 station identifier.
+
+    Returns canonical form:
+        CALLSIGN
+        CALLSIGN-SSID (if SSID != 0)
+
+    Raises:
+        InvalidStationError if malformed
+    """
+    if not station or not isinstance(station, str):
+        raise InvalidStationError("Station must be a non-empty string")
+
+    station = station.strip().upper()
+
+    match = CALL_RE.fullmatch(station)
+    if not match:
+        raise InvalidStationError(f"Invalid station format: {station}")
+
+    callsign, ssid_str = match.groups()
+
+    if ssid_str is None:
+        ssid = 0
+    else:
+        ssid = int(ssid_str)
+        if not (0 <= ssid <= 15):
+            raise InvalidStationError(f"SSID out of range: {ssid}")
+
+    # Canonical form: omit -0
+    if ssid == 0:
+        return callsign
+    else:
+        return f"{callsign}-{ssid}"    
 
 
 class PublicKeyProvider(Protocol):
@@ -121,6 +161,8 @@ class PublicKeyProvider(Protocol):
             Ed25519PublicKey if known, otherwise None.
         """
         ...
+
+
 
 
 def ensure_bytes(payload) -> bytes:
@@ -334,7 +376,7 @@ def verify_packet(
             reason="No callsign available for key lookup",
         )
 
-    public_key = keyring.get_public_key(packet.from_call)
+    public_key = keyring.get_public_key(call_from_station(packet.from_call))
     if public_key is None:
         return AuthResult(
             auth_type=AuthType.KEYNOTFOUND,

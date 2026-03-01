@@ -417,6 +417,8 @@ class CVAuthReflector:
             test_text.encode("utf-8"),
             VIA,
         )
+        
+
 
     def handle_incoming_packet(self, src, dest, packet):
         if not packet.is_signed():
