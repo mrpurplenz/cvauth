@@ -4,6 +4,7 @@ import queue
 import time
 import signal
 from blessed import Terminal
+from textwrap import wrap
 import pe.app
 import pe.monitor
 import ax25.netrom
@@ -74,9 +75,16 @@ class UIState:
         self.via = None
         self.scroll_offset = 0
         self.body_y = 0
+        self.disp_height = 0
+        self.disp_width = 0
 # =====================
 # RENDER
 # =====================
+def get_wrapped_lines(messages, width):
+    wrapped = []
+    for msg in messages:
+        wrapped.extend(wrap(msg, width))
+    return wrapped
 
 def render(term: Terminal, state: UIState):
     print(term.home + term.clear ,end="")
@@ -145,7 +153,9 @@ def render(term: Terminal, state: UIState):
         + term.normal
     )
     # ----- Message area -----
-    total = len(state.messages)
+
+    wrapped = get_wrapped_lines(state.messages,width)
+    total = len(wrapped)
     body_height = state.body_y
 
     max_scroll = max(0, total - body_height)
@@ -156,7 +166,7 @@ def render(term: Terminal, state: UIState):
     start = max(0, start)
     end = start + body_height
 
-    visible_msgs = state.messages[start:end]
+    visible_msgs = wrapped[start:end]
     
     for i, msg in enumerate(visible_msgs):
         line_no =  HEADER_Y + i
@@ -257,6 +267,13 @@ def run_tui(
         render(term, state)
         while state.running:
             dirty = False
+            
+            # ---- Check for resize ----
+            if state.disp_height != term.height or state.disp_width != term.width:
+                state.disp_height = term.height
+                state.disp_width = term.width
+                dirty = True
+                
             # ---- Keyboard input (non-blocking) ----
             key = term.inkey(timeout=0)
             if key:
@@ -271,7 +288,9 @@ def run_tui(
                         #    state.scroll_offset + 1,
                         #    max(0, len(state.messages) - state.body_y)
                         #)
-                        max_scroll = max(0, len(state.messages) - state.body_y)
+                        wrapped = get_wrapped_lines(state.messages,term.width)
+                        total = len(wrapped)
+                        max_scroll = max(0, len(wrapped) - state.body_y)
                         state.scroll_offset = min(state.scroll_offset + 1, max_scroll)
                         #state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
                     # Scroll down (wheel down)
