@@ -79,7 +79,7 @@ class UIState:
 # =====================
 
 def render(term: Terminal, state: UIState):
-    print(term.home + term.clear)
+    print(term.home + term.clear ,end="")
     height = term.height
     width = term.width
 
@@ -139,19 +139,27 @@ def render(term: Terminal, state: UIState):
     header = headerL + headerPAD + headerR
 
     print(
-        term.move_yx(1, 0)
+        term.move_yx(0, 0)
         + term.black_on_white
         + header.ljust(width)
         + term.normal
     )
     # ----- Message area -----
     total = len(state.messages)
-    start = max(0, total - (state.body_y) - state.scroll_offset)
-    end = start + state.body_y
+    body_height = state.body_y
+
+    max_scroll = max(0, total - body_height)
+    state.scroll_offset = min(state.scroll_offset, max_scroll)
+    state.scroll_offset = max(0, state.scroll_offset)
+
+    start = total - body_height - state.scroll_offset
+    start = max(0, start)
+    end = start + body_height
+
     visible_msgs = state.messages[start:end]
     
     for i, msg in enumerate(visible_msgs):
-        line_no = 1 + HEADER_Y + i
+        line_no =  HEADER_Y + i
 
         print(
             term.move_yx(line_no, 0)
@@ -159,7 +167,7 @@ def render(term: Terminal, state: UIState):
         )
     
     print(
-        term.move_yx(1, 0)
+        term.move_yx(0, 0)
         + term.black_on_white
         + header.ljust(width)
         + term.normal
@@ -167,22 +175,32 @@ def render(term: Terminal, state: UIState):
 
     # ----- Prompt -----
     prompt = f"{state.callsign} > "
-    print(
-        term.move_yx(height-1, 0)
-        + term.bold
-        + prompt
-        + term.normal
-        + state.input_buffer
-        + term.normal
-        + term.clear_eol
-    )
+    #print(
+    #    term.move_yx(height-1, 0)
+    #    + term.bold
+    #    + prompt
+    #    + term.normal
+    #    + state.input_buffer
+    #    + term.normal
+    #    + term.clear_eol
+    #)
 
     # Put cursor at end of input
-    print(
-        term.move_yx(height - 2, len(prompt) + len(state.input_buffer)),
-        end="",
-        flush=True,
-    )
+    #print(
+    #    term.move_yx(height - 1, len(prompt) + len(state.input_buffer)),
+    #    end="",
+    #    flush=True,
+    #)
+    # ----- Prompt -----
+    prompt = f"{state.callsign} > "
+    line = prompt + state.input_buffer
+
+    # Move to last line, clear it, print without newline
+    print(term.move_yx(height - 1, 0) + term.clear_eol + term.bold + line + term.normal, end="", flush=True)
+
+    # Put cursor at end of input
+    print(term.move_yx(height - 1, len(line)), end="", flush=True)
+    
     
 def bytes_to_hex_escape(data: bytes) -> str:
     """
@@ -233,8 +251,8 @@ def run_tui(
 ):
     term = Terminal()
     show_splash(term)
-    #with term.fullscreen(), term.cbreak(), term.mouse_enabled():
-    with term.fullscreen(), term.cbreak():
+    #with term.fullscreen(), term.cbreak():
+    with term.fullscreen(), term.cbreak(), term.mouse_enabled():
         print(term.home + term.clear)
         render(term, state)
         while state.running:
@@ -253,7 +271,9 @@ def run_tui(
                         #    state.scroll_offset + 1,
                         #    max(0, len(state.messages) - state.body_y)
                         #)
-                        state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
+                        max_scroll = max(0, len(state.messages) - state.body_y)
+                        state.scroll_offset = min(state.scroll_offset + 1, max_scroll)
+                        #state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
                     # Scroll down (wheel down)
                     elif key.name == "MOUSE_SCROLL_DOWN":
                         #state.messages.extend("MOUSE_SCROLL_DOWN")
