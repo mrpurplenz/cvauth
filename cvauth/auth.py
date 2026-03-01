@@ -130,10 +130,11 @@ def call_from_station(station: str) -> str:
             raise InvalidStationError(f"SSID out of range: {ssid}")
 
     # Canonical form: omit -0
-    if ssid == 0:
-        return callsign
-    else:
-        return f"{callsign}-{ssid}"    
+    #if ssid == 0:
+    #    return callsign
+    #else:
+    #    return f"{callsign}-{ssid}"  
+    return callsign  
 
 
 class PublicKeyProvider(Protocol):
@@ -381,7 +382,7 @@ def verify_packet(
         return AuthResult(
             auth_type=AuthType.KEYNOTFOUND,
             signer=packet.from_call,
-            reason="Public key not found",
+            reason=f"Public key for {call_from_station(packet.from_call)} not found",
         )
 
     ok = crypto.verify(

@@ -113,6 +113,9 @@ def render(term: Terminal, state: UIState):
 
     # Now apply colours
     header_BG = term.on_grey
+    header_BG = term.on_blue
+    header_BG = term.on_white
+    header_BG = term.on_bright_blue
     headerL = (
         header_BG + 
         h_1 +
@@ -325,7 +328,7 @@ def run_tui(
                         msg_colour = term.orange
                 RXheader = "[RX]"
                 if state.verbose:
-                    state.messages.append(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}")
+                    state.messages.append(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}, call {evt['from']}, signer {result['signer']}, Auth status: {result['auth_status']}")
                     state.messages.append(f"[received bytes from pyham_pe: {bytes_to_hex_escape(evt['data'])}]")
                     RXheader = f"[RX {result['reason']}]"
                 state.messages.append(
