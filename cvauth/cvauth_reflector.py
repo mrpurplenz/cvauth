@@ -335,7 +335,7 @@ def make_reflector_message(result, callsign, private_key):
     if result["auth_status"] == AuthType.VALID:
         return (
             f"CVAuth reflector: An authenticated message was received from {result['signer']}"
-            f"which was {result['sanitised_payload']}"
+            f" which was {result['sanitised_payload']}"
         )
 
     if result["auth_status"] == AuthType.NOTSIGNED:
