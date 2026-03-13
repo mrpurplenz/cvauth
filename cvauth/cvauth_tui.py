@@ -11,6 +11,7 @@ import ax25.netrom
 from pathlib import Path
 from .config import ensure_config, load_config, update_config_value, CVAuthConfig
 from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
+from .utilities import station2call
 from .packet import CVPacket
 from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
 from .transport import connect_agwpe
@@ -24,11 +25,23 @@ class LocalKeyring:
     def __init__(self, public_key_path: Path, callsign: str):
         self.public_key_path = public_key_path
         self.callsign = callsign
+        self.key_dir = public_key_path.parent
 
     def get_public_key(self, callsign: str):
+        from cvauth.auth import load_public_key
+
+        callsign = callsign.upper()
+
+        # self key
         if callsign == self.callsign:
-            from cvauth.auth import load_public_key
             return load_public_key(self.public_key_path)
+
+        # remote keys
+        key_file = self.key_dir / f"{station2call(callsign)}.pub"
+
+        if key_file.exists():
+            return load_public_key(key_file)
+
         return None
 
 # =====================
@@ -77,6 +90,7 @@ class UIState:
         self.body_y = 0
         self.disp_height = 0
         self.disp_width = 0
+        
 # =====================
 # RENDER
 # =====================
@@ -95,10 +109,6 @@ def render(term: Terminal, state: UIState):
     PROMPT_Y = 1
     BODY_Y = height - HEADER_Y - PROMPT_Y
     state.body_y = BODY_Y
-    # Clear screen
-    #print(term.home + term.clear)
-    #print(term.home)
-    #print(term.home) #This line to drive the prompt line up the screen
 
     # ----- Header -----
     call_print=state.callsign
@@ -183,24 +193,6 @@ def render(term: Terminal, state: UIState):
         + term.normal
     ) 
 
-    # ----- Prompt -----
-    prompt = f"{state.callsign} > "
-    #print(
-    #    term.move_yx(height-1, 0)
-    #    + term.bold
-    #    + prompt
-    #    + term.normal
-    #    + state.input_buffer
-    #    + term.normal
-    #    + term.clear_eol
-    #)
-
-    # Put cursor at end of input
-    #print(
-    #    term.move_yx(height - 1, len(prompt) + len(state.input_buffer)),
-    #    end="",
-    #    flush=True,
-    #)
     # ----- Prompt -----
     prompt = f"{state.callsign} > "
     line = prompt + state.input_buffer
@@ -624,20 +616,6 @@ def dispatch_command(line, state):
         )
 
 
-def old_handle_command(line, state):
-    """
-    Handle slash-commands.
-    Returns True if the command was handled.
-    """
-    cmd = line.strip()
-
-    if cmd == "/quit":
-        state.running = False
-        state.messages.append("[system] Quitting.")
-        return True
-
-    state.messages.append(f"[error] Unknown command: {cmd}")
-    return True
 # ====================
 # AUTHENTICATION
 # ====================
@@ -700,8 +678,6 @@ def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring
 
     # Use your auth module to verify the packet
     result = verify_packet(packet, keyring)
-    #print(packet)
-    #print(result)
 
     # Map AuthType to signed/valid
     signed = result.auth_type != AuthType.NOTSIGNED and result.auth_type != AuthType.UNKNOWN
