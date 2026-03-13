@@ -9,9 +9,11 @@ cvauth/crypto.py
 cvauth/cvauth.py
 cvauth/cvauth.toml
 cvauth/cvauth_cli.py
+cvauth/cvauth_pty.py
 cvauth/cvauth_reflector.py
 cvauth/cvauth_tui.py
 cvauth/packet.py
+cvauth/transport.py
 cvauth.egg-info/PKG-INFO
 cvauth.egg-info/SOURCES.txt
 cvauth.egg-info/dependency_links.txt

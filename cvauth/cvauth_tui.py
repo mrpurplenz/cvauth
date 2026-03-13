@@ -623,8 +623,8 @@ def dispatch_command(line, state):
             (f"[system] error Command failed: {e}")
         )
 
-#Depricated
-def handle_command(line, state):
+
+def old_handle_command(line, state):
     """
     Handle slash-commands.
     Returns True if the command was handled.
@@ -734,14 +734,7 @@ def is_netrom_nodes_packet(call_to: str, payload: bytes) -> bool:
 
 
 
-def old_decode_ax25_callsign(addr: bytes) -> str:
-    """
-    Decode 7-byte shifted AX.25 callsign field.
-    """
-    call = ''.join(chr(b >> 1) for b in addr[:6]).strip()
-    ssid = (addr[6] >> 1) & 0x0F
-    return f"{call}-{ssid}" if ssid else call
-    
+   
 def decode_ax25_callsign(addr: bytes) -> str:
     """
     Properly decode 7-byte NET/ROM callsign field.
@@ -792,47 +785,7 @@ def decode_netrom_nodes(payload: bytes):
 
 
 
-def depr_decode_netrom_nodes(sender: str, payload: bytes) -> dict:
-    """
-    Decode NET/ROM NODES broadcast into structured dict.
-    """
 
-    nodes = {}
-
-    try:
-        count = payload[0]
-        offset = 1
-
-        for _ in range(count):
-            if offset + 21 > len(payload):
-                break
-
-            dest_call = decode_ax25_callsign(payload[offset:offset+7])
-            offset += 7
-
-            alias = payload[offset:offset+6].decode("ascii", "replace").strip()
-            offset += 6
-
-            best_neighbor = decode_ax25_callsign(payload[offset:offset+7])
-            offset += 7
-
-            quality = payload[offset]
-            offset += 1
-
-            nodes[dest_call] = {
-                "alias": alias,
-                "best_neighbor": best_neighbor,
-                "quality": quality,
-            }
-
-    except Exception:
-        return {}
-
-    return {
-        "sender": sender,
-        "node_count": len(nodes),
-        "nodes": nodes,
-    }
 def format_netrom_summary(netrom_data, term=None):
     """
     Format NET/ROM RoutingBroadcast data into a sorted, colored terminal table.
@@ -902,63 +855,7 @@ def format_netrom_summary(netrom_data, term=None):
 
     return lines
 
-def old_format_netrom_summary(netrom_data, term=None):
-    """
-    Format NET/ROM RoutingBroadcast data into a professional terminal table.
 
-    Args:
-        netrom_data: dict returned by decode_netrom_nodes()
-        term: blessed.Terminal instance for color (optional)
-
-    Returns:
-        list[str]: formatted lines for display in messages
-    """
-    if term is None:
-        class DummyTerm:
-            bold = normal = white = cyan = yellow = green = magenta = ""
-        term = DummyTerm()
-
-    lines = []
-    sender = netrom_data.get("sender", "UNKNOWN")
-    node_count = netrom_data.get("count", 0)
-    nodes = netrom_data.get("nodes", [])
-
-    # Table width
-    width = 60
-
-    # Top border
-    lines.append(term.bold + "┌" + "─" * (width - 2) + "┐" + term.normal)
-
-    # Title
-    title = f"NET/ROM Routing Broadcast from {sender} — {node_count} nodes"
-    lines.append(term.bold + "│" + title.center(width - 2) + "│" + term.normal)
-
-    # Header separator
-    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
-
-    # Column headers
-    header = f"{'DESTINATION':<12} {'ALIAS':<12} {'VIA':<12} {'QUAL':>4}"
-    lines.append(term.bold + "│ " + header.ljust(width - 4) + " │" + term.normal)
-
-    # Header-bottom separator
-    lines.append(term.bold + "├" + "─" * (width - 2) + "┤" + term.normal)
-
-    # Table rows
-    for n in nodes:
-        dest = str(n.get("callsign", ""))[:12]
-        alias = str(n.get("alias", ""))[:12]
-        via = str(n.get("via", ""))[:12]
-        qual = str(n.get("quality", ""))
-
-        # Optional coloring
-        color = term.green if n.get("quality", 0) > 110 else term.yellow
-        line = f"│ {dest:<12} {alias:<12} {via:<12} {qual:>4} │"
-        lines.append(color + line + term.normal)
-
-    # Bottom border
-    lines.append(term.bold + "└" + "─" * (width - 2) + "┘" + term.normal)
-
-    return lines
 
 def update_netrom_nodes(state, sender, netrom_data):
     """
