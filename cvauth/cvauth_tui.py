@@ -32,8 +32,8 @@ class LocalKeyring:
         from cvauth.auth import load_public_key
 
         callsign = callsign.upper()
-        if state.verbose:
-            state.messages.append(f"looking for key at {self.public_key_path}")
+        if self.state.verbose:
+            self.state.messages.append(f"looking for key at {self.public_key_path}")
         # self key
         if callsign == self.callsign:
             return load_public_key(self.public_key_path)
