@@ -36,6 +36,7 @@ except ModuleNotFoundError:
 import tomli_w
 
 from .config import ensure_config, load_config, update_config_value
+from .utilities import station2call
 from .auth import load_private_key, generate_and_save_keypair, ensure_bytes
 from .auth import sign_packet, verify_packet, AuthType, AuthResult
 from .packet import CVPacket
