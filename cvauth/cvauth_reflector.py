@@ -221,18 +221,26 @@ class MonitorType(Enum):
     UNPROTO_TEXT = "UT"
     UNPROTO_BINARY = "UB"
 
+
+
 class LocalKeyring:
-    def __init__(self, public_key_path: Path, callsign: str):
-        self.public_key_path = public_key_path
-        self.callsign = callsign
+    def __init__(self, state, public_key_dir: Path, callsign: str):
+        self.state = state
+        self.public_key_dir = public_key_dir
+        #self.key_dir = public_key_path.parent
 
-    def get_public_key(self, callsign: str):
-        if callsign == self.callsign:
-            from cvauth.auth import load_public_key
-            return load_public_key(self.public_key_path)
+    def get_public_key(self, station: str):
+        from cvauth.auth import load_public_key
+        callsign = station2call(station.upper())
+        if self.state.verbose:
+            self.state.messages.append(f"looking for key at {self.public_key_dir}/{callsign}.pem")
+
+        key_file = self.public_key_dir / f"{callsign}.pem"
+
+        if key_file.exists():
+            return load_public_key(key_file)
+
         return None
-
-
 
 
 
@@ -519,8 +527,8 @@ class CVAuthReflector:
 
         self.config = config
 
-        self.keyring = LocalKeyring(
-            public_key_path=self.config.resolve_path(self.config.keys.public_key),
+        self.keyring = LocalKeyring(None,
+            public_key_dir=self.config.resolve_path(self.config.keys.public_key).parent,
             callsign=self.config.identity.callsign
         )
 

@@ -32,11 +32,7 @@ class LocalKeyring:
         callsign = station2call(station.upper())
         if self.state.verbose:
             self.state.messages.append(f"looking for key at {self.public_key_dir}/{callsign}.pem")
-        # self key
-        #if callsign == self.callsign:
-        #    return load_public_key(self.public_key_path)
 
-        # remote keys
         key_file = self.public_key_dir / f"{callsign}.pem"
 
         if key_file.exists():
