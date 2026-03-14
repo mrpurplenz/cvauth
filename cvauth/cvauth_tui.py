@@ -22,24 +22,22 @@ import os
 # ====================
 
 class LocalKeyring:
-    def __init__(self, state, public_key_path: Path, callsign: str):
+    def __init__(self, state, public_key_dir: Path, callsign: str):
         self.state = state
-        self.public_key_path = public_key_path
-        self.callsign = callsign
-        self.key_dir = public_key_path.parent
+        self.public_key_dir = public_key_dir
+        #self.key_dir = public_key_path.parent
 
-    def get_public_key(self, callsign: str):
+    def get_public_key(self, station: str):
         from cvauth.auth import load_public_key
-
-        callsign = callsign.upper()
+        callsign = station2callsign(station.upper())
         if self.state.verbose:
-            self.state.messages.append(f"looking for key at {self.public_key_path}")
+            self.state.messages.append(f"looking for key at {self.public_key_dir}")
         # self key
-        if callsign == self.callsign:
-            return load_public_key(self.public_key_path)
+        #if callsign == self.callsign:
+        #    return load_public_key(self.public_key_path)
 
         # remote keys
-        key_file = self.key_dir / f"{station2call(callsign)}.pub"
+        key_file = self.key_dir / f"{callsign}.pub"
 
         if key_file.exists():
             return load_public_key(key_file)
@@ -1069,7 +1067,7 @@ def main():
 
     #public keys keyring
     state.keyring = LocalKeyring(state,
-        public_key_path=config.resolve_path(config.keys.public_key),
+        public_key_dir=config.resolve_path(config.keys.public_key).parent,
         callsign=config.identity.callsign
     )
 
