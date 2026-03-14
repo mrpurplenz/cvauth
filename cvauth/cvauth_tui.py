@@ -37,7 +37,7 @@ class LocalKeyring:
         #    return load_public_key(self.public_key_path)
 
         # remote keys
-        key_file = self.key_dir / f"{callsign}.pub"
+        key_file = self.public_key_dir / f"{callsign}.pub"
 
         if key_file.exists():
             return load_public_key(key_file)
