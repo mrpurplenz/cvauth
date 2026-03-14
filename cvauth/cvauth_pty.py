@@ -195,15 +195,35 @@ def request_keypair_paths(config) -> tuple[str, str]:
     return private_key, public_key
 
 class LocalKeyring:
-    def __init__(self, public_key_path: Path, callsign: str):
-        self.public_key_path = public_key_path
-        self.callsign = callsign
+
+    def __init__(self, key_dir: Path):
+        self.key_dir = key_dir
 
     def get_public_key(self, callsign: str):
-        if callsign == self.callsign:
-            from cvauth.auth import load_public_key
-            return load_public_key(self.public_key_path)
-        return None
+
+        key_path = self.key_dir / f"{callsign.upper()}.pub"
+
+        if not key_path.exists():
+            return None
+
+        from cvauth.auth import load_public_key
+        return load_public_key(key_path)
+        
+        
+def sanitise_text(data: bytes) -> str:
+
+    import unicodedata
+
+    text = data.decode("utf-8", "strict")
+
+    text = unicodedata.normalize("NFC", text)
+
+    text = "".join(
+        ch for ch in text
+        if ch == "\n" or (32 <= ord(ch) <= 126)
+    )
+
+    return text  
 
 #AUTHENTICATION FUNCTION
 def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring):
@@ -309,7 +329,7 @@ class CVAuthPTYServer:
 
         #self.call_from = None
         
-        self.app = None
+        self.app = pe.app.Application()
         self.monitor = UIMonitor()
         
         self.pty_fd = None
@@ -475,7 +495,7 @@ class CVAuthPTYServer:
                 print(f"Rejected packet from {call_from} ({auth_status})")
                 return
 
-            payload = result["sanitised_payload"]
+            payload = sanitise_text(result["sanitised_payload"])
 
             if isinstance(payload, bytes):
                 payload = payload.decode("utf-8", "ignore")
@@ -533,7 +553,7 @@ class CVAuthPTYServer:
             
             
             if process_this:
-                self.process_packet(port, call_from, call_to, data, via)
+                self.process_packet(port, call_from, call_to, received_payload, [])
 
 
             # check PTY output
@@ -547,7 +567,7 @@ class CVAuthPTYServer:
 
     # ---------------------------------------------------------
 
-    def stop(self):
+    def depr_stop(self):
 
         print("Stopping server")
 
