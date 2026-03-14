@@ -22,7 +22,8 @@ import os
 # ====================
 
 class LocalKeyring:
-    def __init__(self, public_key_path: Path, callsign: str):
+    def __init__(self, state, public_key_path: Path, callsign: str):
+        self.state = state
         self.public_key_path = public_key_path
         self.callsign = callsign
         self.key_dir = public_key_path.parent
@@ -31,7 +32,8 @@ class LocalKeyring:
         from cvauth.auth import load_public_key
 
         callsign = callsign.upper()
-
+        if state.verbose:
+            state.messages.append(f"looking for key at {self.public_key_path}")
         # self key
         if callsign == self.callsign:
             return load_public_key(self.public_key_path)
@@ -1066,7 +1068,7 @@ def main():
         state.private_key = load_private_key(private_posix)
 
     #public keys keyring
-    state.keyring = LocalKeyring(
+    state.keyring = LocalKeyring(state,
         public_key_path=config.resolve_path(config.keys.public_key),
         callsign=config.identity.callsign
     )

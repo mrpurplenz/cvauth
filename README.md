@@ -105,6 +105,12 @@ To run the terminal (for example) type
 cvauth-tui
 ```
 
+To update we can uninstall and reinstall
+```bash
+pip uninstall "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
+pip install "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
+```
+
 ### Option 2 — Clone a developement version (Recommended for contributors)
 
 ```bash
@@ -119,6 +125,19 @@ git clone https://github.com/mrpurplenz/cvauth.git
 cd cvauth
 
 pip install -e .
+```
+
+To run you need to load your ve
+```bash
+source cvenv/bin/activate
+cvauth-tui
+```
+
+
+To update to latest version do
+```bash
+cd ~\cvauth-dev
+git pull origin main
 ```
 
 
