@@ -6,7 +6,6 @@ from .crypto import available_schemes
 
 
 def valid_callsign(call) -> bool:
-
     _CALLSIGN_RE = re.compile(
         r"""
         ^                           # start
@@ -27,15 +26,7 @@ CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}$")
 
 
 def request_callsign(default: str | None = None) -> str:
-    """
-    Prompt the user for a station callsign.
-
-    If default is provided, it is returned immediately.
-
-    Raises:
-        RuntimeError if interactive input is unavailable.
-    """
-
+    """Prompt the user for a station callsign."""
     if default:
         return default.strip().upper()
 
@@ -70,10 +61,7 @@ def request_callsign(default: str | None = None) -> str:
 
 
 def request_ssid(default: int = 1) -> int:
-    """
-    Interactively request an AX.25 SSID from the user.
-    Returns a validated integer between 0 and 15.
-    """
+    """Prompt for an AX.25 SSID."""
     print("\nAX.25 SSID configuration")
     print("------------------------")
     print("The SSID distinguishes multiple stations using the same callsign.")
@@ -99,10 +87,7 @@ def request_ssid(default: int = 1) -> int:
 
 def request_keypair_paths(default_priv: str = "keys/private.pem",
                           default_pub: str = "keys/public.pem") -> tuple[str, str]:
-    """
-    Prompt the user for private/public key locations.
-    Returns a tuple of (private_key_path, public_key_path).
-    """
+    """Prompt the user for private/public key locations."""
     if not hasattr(__builtins__, "input"):
         raise RuntimeError("Interactive input unavailable")
 
@@ -141,12 +126,7 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
 
 
 def request_crypto_scheme(default: str | None = None) -> str:
-    """Prompt the user to select a registered crypto scheme.
-
-    Reads the available schemes from ``cvauth.crypto.available_schemes()`` and
-    asks the user to choose one. The default is the current scheme if provided,
-    otherwise the first registered value.
-    """
+    """Prompt the user to select a registered crypto scheme."""
     schemes = available_schemes()
     if not schemes:
         raise RuntimeError("No crypto schemes are registered")
@@ -165,8 +145,7 @@ def request_crypto_scheme(default: str | None = None) -> str:
 
     while True:
         try:
-            raw = input(
-                f"Select scheme [{default_choice}] (number or name): ").strip()
+            raw = input(f"Select scheme [{default_choice}] (number or name): ").strip()
         except EOFError:
             raise RuntimeError("Cannot prompt for crypto scheme (no stdin)")
 
