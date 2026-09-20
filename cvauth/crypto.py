@@ -48,10 +48,22 @@ The caller is responsible for:
 This module only signs and verifies raw byte payloads.
 """
 
+from dataclasses import dataclass
+from typing import Callable
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+
+
+@dataclass(frozen=True)
+class CryptoScheme:
+    """The detached-signature operations provided by a crypto scheme."""
+
+    name: str
+    sign: Callable[[bytes, object], bytes]
+    verify: Callable[[bytes, bytes, object], bool]
 
 
 def sign(payload: bytes, private_key: Ed25519PrivateKey) -> bytes:
@@ -103,29 +115,45 @@ def verify(payload: bytes, signature: bytes, public_key: Ed25519PublicKey) -> bo
 
     Args:
         payload: Original signed payload bytes.
-        signature: 64-byte Ed25519 signature.
+        signature: Ed25519 signature bytes.
         public_key: Ed25519 public key instance.
 
     Returns:
         bool: True if signature is valid, False otherwise.
 
     Security:
-        - Any verification failure returns False.
-        - Exceptions are intentionally suppressed to prevent
-          leaking failure detail.
-
-    Notes:
-        - This function does not validate key provenance.
-        - This function does not protect against replay attacks.
-        - The caller must ensure payload canonicalization.
-
-    Example:
-        >>> valid = verify(payload, signature, public_key)
-        >>> if not valid:
-        ...     raise AuthenticationError("Invalid signature")
+        Any verification failure returns False. Exceptions are intentionally
+        suppressed to prevent leaking failure detail.
     """
     try:
         public_key.verify(signature, payload)
         return True
     except Exception:
         return False
+
+
+# Stable identifier for the scheme currently used on the wire.  The registry
+# is deliberately separate from packet encoding; adding entries here must not
+# change signature byte handling.
+DEFAULT_SCHEME = "ed25519"
+CRYPTO_SCHEMES: dict[str, CryptoScheme] = {
+    DEFAULT_SCHEME: CryptoScheme(
+        name=DEFAULT_SCHEME,
+        sign=sign,
+        verify=verify,
+    ),
+}
+
+
+def available_schemes() -> tuple[str, ...]:
+    """Return the registered scheme identifiers in registry order."""
+    return tuple(CRYPTO_SCHEMES)
+
+
+def get_scheme(name: str) -> CryptoScheme:
+    """Return a registered scheme by identifier.
+
+    Raises:
+        KeyError: If ``name`` is not registered.
+    """
+    return CRYPTO_SCHEMES[name]
