@@ -28,7 +28,7 @@ class TestAuthRoundTrip(unittest.TestCase):
         self.private_key = Ed25519PrivateKey.generate()
         self.public_key = self.private_key.public_key()
 
-        self.callsign = "ZL1TEST"
+        self.callsign = "ZL1TST"
         self.payload = b"Hello AX.25. This will want to be able to compress 000000000000000000000"
 
         self.keyring = DictKeyring({
@@ -107,7 +107,7 @@ class TestCompression(unittest.TestCase):
 
     def test_packet_compression_roundtrip(self):
         payload = b"AX.25 payload that needs compressing" * 200
-        pkt = CVPacket(from_call="ZL1TEST", payload=payload)
+        pkt = CVPacket(from_call="ZL1TST", payload=payload)
         encoded = pkt.encode()
         decoded = CVPacket.decode(encoded)
 

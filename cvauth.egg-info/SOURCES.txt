@@ -14,6 +14,7 @@ cvauth/cvauth_reflector.py
 cvauth/cvauth_tui.py
 cvauth/packet.py
 cvauth/transport.py
+cvauth/utilities.py
 cvauth.egg-info/PKG-INFO
 cvauth.egg-info/SOURCES.txt
 cvauth.egg-info/dependency_links.txt
@@ -22,4 +23,5 @@ cvauth.egg-info/requires.txt
 cvauth.egg-info/top_level.txt
 tests/test_auth.py
 tests/test_cli.py
+tests/test_crypto.py
 tests/test_public_api.py
