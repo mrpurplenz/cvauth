@@ -2,13 +2,11 @@
 
 import os
 import tempfile
-from pathlib import Path
-from io import StringIO
 from unittest import TestCase
-from unittest.mock import patch
 
-from cvauth.cli import main
+from cvauth.cvauth_cli import main
 from cvauth.config import default_config_path
+
 
 class TestCLIInit(TestCase):
     def test_init_creates_config(self):
@@ -34,7 +32,6 @@ class TestCLIInit(TestCase):
             text2 = cfg.read_text()
 
             self.assertEqual(text1, text2)
-
 
     def test_unknown_command_fails(self):
         with self.assertRaises(SystemExit) as cm:

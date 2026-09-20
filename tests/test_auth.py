@@ -3,7 +3,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cvauth.packet import CVPacket
 from cvauth.auth import sign_packet, verify_packet, AuthType
 from cvauth.crypto import sign, verify
-from cvauth.config import ensure_config, get_config_path
+from cvauth.config import ensure_config
 import os
 import zlib
 import tempfile
@@ -67,7 +67,6 @@ class TestAuthRoundTrip(unittest.TestCase):
 
     def test_wrong_key_fails(self):
         other_key = Ed25519PrivateKey.generate()
-        other_pub = other_key.public_key()
 
         pkt = CVPacket(from_call=self.callsign, payload=self.payload)
         sign_packet(pkt, other_key)
@@ -85,56 +84,34 @@ class TestAuthRoundTrip(unittest.TestCase):
         self.assertEqual(result.auth_type, AuthType.KEYNOTFOUND)
 
     def test_signed_packet_roundtrip(self):
-        # Arrange
-        payload = self.payload
-        private_key = self.private_key
-        public_key = self.public_key
-        test_from_call = self.callsign
-
-        # Act: create and sign
-        pkt = CVPacket(from_call=test_from_call, payload=payload)
-        sign_packet(pkt,private_key)
+        pkt = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(pkt, self.private_key)
 
         encoded = pkt.encode()
+        decoded = CVPacket.decode(encoded, from_call=self.callsign)
+        verification_result = verify_packet(decoded, self.keyring)
 
-        # Act: decode and verify
-        decoded = CVPacket.decode(encoded,from_call = test_from_call)
-        keyring = self.keyring
-        verification_result = verify_packet(decoded, keyring)
+        self.assertEqual(verification_result.signer, self.callsign)
+        self.assertEqual(verification_result.auth_type, AuthType.VALID)
+        self.assertEqual(decoded.payload, self.payload)
 
-        assert verification_result.signer == test_from_call, \
-            f"Expected signer {test_from_call} but got {verification_result.signer}. Reason: {verification_result.reason}"
-
-
-        assert verification_result.auth_type == AuthType.VALID, \
-            f"Expected VALID but got {verification_result.auth_type}. Reason: {verification_result.reason}"
-
-
-        # Assert payload integrity
-        assert decoded.payload == payload
 
 class TestCompression(unittest.TestCase):
 
     def test_roundtrip_compression(self):
-        original = b"Hello AX.25 world. " * 10  # repetitive to see compression
+        original = b"Hello AX.25 world. " * 10
         compressed = zlib.compress(original)
         decompressed = zlib.decompress(compressed)
 
-        # Assert that decompression returns original data
         self.assertEqual(decompressed, original)
 
     def test_packet_compression_roundtrip(self):
-        from cvauth.packet import CVPacket
-
         payload = b"AX.25 payload that needs compressing" * 200
         pkt = CVPacket(from_call="ZL1TEST", payload=payload)
         encoded = pkt.encode()
         decoded = CVPacket.decode(encoded)
 
-        #Setup achied compression
         self.assertTrue(pkt.compressed, "packet payload was not compressed")
-
-        # payload integrity
         self.assertEqual(decoded.payload, payload)
 
 
@@ -173,4 +150,3 @@ class TestConfig(unittest.TestCase):
             self.assertIn("cvauth", data)
             self.assertIn("identity", data["cvauth"])
             self.assertEqual(data["cvauth"]["identity"]["callsign"], "")
-            
