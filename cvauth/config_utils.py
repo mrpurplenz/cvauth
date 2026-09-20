@@ -2,6 +2,9 @@
 import re
 import sys
 
+from .crypto import available_schemes
+
+
 def valid_callsign(call) -> bool:
 
     _CALLSIGN_RE = re.compile(
@@ -12,13 +15,12 @@ def valid_callsign(call) -> bool:
         (?:-(?:[0-9]|1[0-5]))?      # optional -SSID (0–15)
         $                           # end
         """,
-        re.VERBOSE
+        re.VERBOSE,
     )
     if _CALLSIGN_RE.match(call):
         return True
 
     return False
-
 
 
 CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}$")
@@ -107,7 +109,6 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
     print("\nNo keypair is configured for this station.")
     print("A private/public keypair is required for authentication.\n")
 
-    # --- Private key -------------------------------------------------
     while True:
         try:
             value = input(f"Private key path [{default_priv}]: ").strip()
@@ -122,7 +123,6 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
             private_key = value
             break
 
-    # --- Public key --------------------------------------------------
     while True:
         try:
             value = input(f"Public key path [{default_pub}]: ").strip()
@@ -138,3 +138,47 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
             break
 
     return private_key, public_key
+
+
+def request_crypto_scheme(default: str | None = None) -> str:
+    """Prompt the user to select a registered crypto scheme.
+
+    Reads the available schemes from ``cvauth.crypto.available_schemes()`` and
+    asks the user to choose one. The default is the current scheme if provided,
+    otherwise the first registered value.
+    """
+    schemes = available_schemes()
+    if not schemes:
+        raise RuntimeError("No crypto schemes are registered")
+
+    default_choice = default if default in schemes else schemes[0]
+
+    if not hasattr(__builtins__, "input"):
+        raise RuntimeError("Interactive input unavailable")
+
+    print("\nCrypto scheme configuration")
+    print("--------------------------")
+    for index, scheme in enumerate(schemes, start=1):
+        marker = "*" if scheme == default_choice else " "
+        print(f"  {marker} {index}. {scheme}")
+    print()
+
+    while True:
+        try:
+            raw = input(
+                f"Select scheme [{default_choice}] (number or name): ").strip()
+        except EOFError:
+            raise RuntimeError("Cannot prompt for crypto scheme (no stdin)")
+
+        if raw == "":
+            return default_choice
+
+        if raw.isdigit():
+            index = int(raw)
+            if 1 <= index <= len(schemes):
+                return schemes[index - 1]
+        else:
+            if raw in schemes:
+                return raw
+
+        print(f"Invalid selection. Choose one of: {', '.join(schemes)}")
