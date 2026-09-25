@@ -1,4 +1,5 @@
 # config_utils.py
+import builtins
 import re
 import sys
 
@@ -85,10 +86,12 @@ def request_ssid(default: int = 1) -> int:
         print("SSID must be between 0 and 15.")
 
 
-def request_keypair_paths(default_priv: str = "keys/private.pem",
-                          default_pub: str = "keys/public.pem") -> tuple[str, str]:
+def request_keypair_paths(
+    default_priv: str = "keys/private.pem",
+    default_pub: str = "keys/public.pem",
+) -> tuple[str, str]:
     """Prompt the user for private/public key locations."""
-    if not hasattr(__builtins__, "input"):
+    if not callable(getattr(builtins, "input", None)):
         raise RuntimeError("Interactive input unavailable")
 
     print("\nNo keypair is configured for this station.")
@@ -133,7 +136,7 @@ def request_crypto_scheme(default: str | None = None) -> str:
 
     default_choice = default if default in schemes else schemes[0]
 
-    if not hasattr(__builtins__, "input"):
+    if not callable(getattr(builtins, "input", None)):
         raise RuntimeError("Interactive input unavailable")
 
     print("\nCrypto scheme configuration")
@@ -145,7 +148,9 @@ def request_crypto_scheme(default: str | None = None) -> str:
 
     while True:
         try:
-            raw = input(f"Select scheme [{default_choice}] (number or name): ").strip()
+            raw = input(
+                f"Select scheme [{default_choice}] (number or name): "
+            ).strip()
         except EOFError:
             raise RuntimeError("Cannot prompt for crypto scheme (no stdin)")
 
@@ -156,8 +161,7 @@ def request_crypto_scheme(default: str | None = None) -> str:
             index = int(raw)
             if 1 <= index <= len(schemes):
                 return schemes[index - 1]
-        else:
-            if raw in schemes:
-                return raw
+        elif raw in schemes:
+            return raw
 
         print(f"Invalid selection. Choose one of: {', '.join(schemes)}")
