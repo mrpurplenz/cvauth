@@ -149,7 +149,7 @@ def request_crypto_scheme(default: str | None = None) -> str:
     while True:
         try:
             raw = input(
-                f"Select scheme [{default_choice}] (number or name): "
+                f"Select scheme enter for *default [{default_choice}] (number or name): "
             ).strip()
         except EOFError:
             raise RuntimeError("Cannot prompt for crypto scheme (no stdin)")
