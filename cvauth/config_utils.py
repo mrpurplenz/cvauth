@@ -165,3 +165,5 @@ def request_crypto_scheme(default: str | None = None) -> str:
             return raw
 
         print(f"Invalid selection. Choose one of: {', '.join(schemes)}")
+
+request_scheme = request_crypto_scheme

@@ -10,7 +10,13 @@ import pe.monitor
 import ax25.netrom
 from pathlib import Path
 from .config import ensure_config, load_config, update_config_value, CVAuthConfig
-from .config_utils import request_callsign, request_ssid, request_keypair_paths, valid_callsign
+from .config_utils import (
+	request_callsign,
+	request_ssid,
+	request_keypair_paths,
+	request_scheme,
+	valid_callsign
+	)
 from .utilities import station2call
 from .packet import CVPacket
 from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
@@ -71,6 +77,7 @@ class UIState:
         self.callsign = callsign
         self.ssid = ssid
         self.signing = signing
+        self.scheme = None
         self.messages = []      # list[str]
         self.input_buffer = ""
         self.config = None
@@ -1017,6 +1024,14 @@ def main():
         ssid = request_ssid()
         config = update_config_value(config, "identity.ssid", ssid)
     state.ssid = config.identity.ssid
+
+    #Crypto scheme
+    scheme = config.crypto.scheme
+    if not scheme:
+        scheme = request_scheme()
+        config = update_config_value(config, "crypto.scheme", scheme)
+    state.scheme = config.crypto.scheme
+
 
     #Local key paths
     private_key_path = config.keys.private_key

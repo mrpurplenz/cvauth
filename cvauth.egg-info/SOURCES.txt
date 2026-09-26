@@ -23,5 +23,6 @@ cvauth.egg-info/requires.txt
 cvauth.egg-info/top_level.txt
 tests/test_auth.py
 tests/test_cli.py
+tests/test_config_utils.py
 tests/test_crypto.py
 tests/test_public_api.py
