@@ -15,8 +15,6 @@ import tomli_w
 from importlib.resources import files
 from platformdirs import user_config_dir
 
-from .crypto import DEFAULT_SCHEME, available_schemes
-
 APP_NAME = "cvauth"
 CONFIG_FILENAME = "cvauth.toml"
 
@@ -59,7 +57,7 @@ class KeysConfig:
 
 @dataclass(frozen=True)
 class CryptoConfig:
-    scheme: str = DEFAULT_SCHEME
+    scheme: str
 
 
 @dataclass(frozen=True)
@@ -77,9 +75,9 @@ class ConfigLocationConfig:
 class CVAuthConfig:
     identity: IdentityConfig
     keys: KeysConfig
-    crypto: CryptoConfig = field(default_factory=CryptoConfig)
-    behaviour: BehaviourConfig = field(default_factory=BehaviourConfig)
-    config_location: ConfigLocationConfig = field(default_factory=lambda: ConfigLocationConfig(config_path=""))
+    crypto: CryptoConfig
+    behaviour: BehaviourConfig
+    config_location: ConfigLocationConfig
 
     @property
     def config_dir(self) -> Path:
@@ -94,88 +92,71 @@ class CVAuthConfig:
         return (self.config_dir / p).resolve()
 
 
-def ensure_config() -> Path:
-    """Ensure the configuration file exists and contains required defaults.
+def _merge_with_defaults(user_data: dict) -> dict:
+    """Merge user config with defaults from template.
 
-    Existing files are upgraded in-place so older config files keep their values,
-    while missing keys (such as the crypto scheme) are backfilled using the
-    registered default scheme or an interactive prompt when available.
+    For any missing top-level section or missing keys within a section,
+    use the values from the bundled default TOML file.
+    This ensures upgrades and new installs both use the template as truth.
+    """
+    defaults = load_default_config().get("cvauth", {})
+    user_cvauth = user_data.get("cvauth", {})
+
+    # Start with defaults, then overlay user values
+    merged = {}
+    for section in defaults.keys():
+        if isinstance(defaults[section], dict):
+            # Section is a nested dict: merge key-by-key
+            merged[section] = {**defaults[section], **user_cvauth.get(section, {})}
+        else:
+            # Scalar value: use user value if present, else default
+            merged[section] = user_cvauth.get(section, defaults[section])
+
+    return {"cvauth": merged}
+
+
+def ensure_config() -> Path:
+    """Ensure the configuration file exists.
+
+    Writes the template verbatim on first run.
+    Existing files are left untouched (upgrade happens on load).
     """
     config_path = user_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not config_path.exists():
         default_config = load_default_config()
-        default_config["cvauth"]["config_location"] = {"config_path": str(config_path)}
-        if "crypto" not in default_config["cvauth"]:
-            default_config["cvauth"]["crypto"] = {"scheme": DEFAULT_SCHEME}
-        elif not default_config["cvauth"]["crypto"].get("scheme"):
-            default_config["cvauth"]["crypto"]["scheme"] = DEFAULT_SCHEME
+        default_config["cvauth"]["config_location"]["config_path"] = str(config_path)
         with config_path.open("wb") as f:
             tomli_w.dump(default_config, f)
-        return config_path
-
-    data = tomllib.loads(config_path.read_text())
-    if "cvauth" not in data:
-        data["cvauth"] = {}
-
-    cvauth = data["cvauth"]
-    changed = False
-
-    if "config_location" not in cvauth:
-        cvauth["config_location"] = {}
-    if "config_path" not in cvauth["config_location"] or not cvauth["config_location"]["config_path"]:
-        cvauth["config_location"]["config_path"] = str(config_path)
-        changed = True
-
-    if "crypto" not in cvauth:
-        cvauth["crypto"] = {}
-    if "scheme" not in cvauth["crypto"] or not cvauth["crypto"]["scheme"]:
-        scheme = DEFAULT_SCHEME
-        if sys.stdin is not None and sys.stdin.isatty():
-            try:
-                from .config_utils import request_crypto_scheme
-
-                scheme = request_crypto_scheme(default=scheme)
-            except Exception:
-                scheme = DEFAULT_SCHEME
-        cvauth["crypto"]["scheme"] = scheme
-        changed = True
-    elif cvauth["crypto"]["scheme"] not in available_schemes():
-        scheme = DEFAULT_SCHEME
-        if sys.stdin is not None and sys.stdin.isatty():
-            try:
-                from .config_utils import request_crypto_scheme
-
-                scheme = request_crypto_scheme(default=scheme)
-            except Exception:
-                scheme = DEFAULT_SCHEME
-        cvauth["crypto"]["scheme"] = scheme
-        changed = True
-
-    if changed:
-        with config_path.open("wb") as f:
-            tomli_w.dump(data, f)
 
     return config_path
 
 
 def load_config(path: Optional[Path] = None) -> CVAuthConfig:
-    """Load CVAuth configuration."""
+    """Load CVAuth configuration with automatic upgrade from template defaults.
+
+    Path resolution rules:
+      1. Explicit path argument (highest priority)
+      2. config_location.config_path from file (if non-empty)
+      3. default_config_path()
+
+    Missing keys are backfilled from the bundled default TOML template,
+    ensuring new settings are automatically added on upgrade.
+    """
     load_path = path or default_config_path()
 
     if not load_path.exists():
         raise ConfigError(f"Config file not found: {load_path}")
 
     try:
-        data = tomllib.loads(load_path.read_text())
+        user_data = tomllib.loads(load_path.read_text())
     except Exception as e:
         raise ConfigError(f"Failed to parse config: {e}") from e
 
-    if "cvauth" not in data:
-        raise ConfigError("Missing [cvauth] section in config")
-
-    data = data["cvauth"]
+    # Merge user config with defaults from template
+    merged_data = _merge_with_defaults(user_data)
+    data = merged_data["cvauth"]
 
     identity_section = data.get("identity", {})
     keys_section = data.get("keys", {})
@@ -194,7 +175,7 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
     )
 
     crypto = CryptoConfig(
-        scheme=crypto_section.get("scheme", DEFAULT_SCHEME),
+        scheme=crypto_section.get("scheme", ""),
     )
 
     behaviour = BehaviourConfig(
@@ -223,7 +204,16 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
 
 
 def update_config_value(config: CVAuthConfig, attr_path: str, value) -> CVAuthConfig:
-    """Update a config value and write back to disk."""
+    """Update a config value and write back to disk.
+
+    Args:
+        config: Current CVAuthConfig instance
+        attr_path: Dot-separated path like "identity.callsign" or "crypto.scheme"
+        value: The value to set
+
+    Returns:
+        Updated CVAuthConfig with the change persisted to disk
+    """
     parts = attr_path.split(".")
     if len(parts) != 2:
         raise ValueError("attr_path must be section.field")
