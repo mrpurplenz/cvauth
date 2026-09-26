@@ -55,7 +55,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-
+#refactor note: We will probably need to add a new class for every crypto scheme so that different serialisation and verification can be done for each
+#refactor note: The new scheme classes will then go as named objects into the schemes available registry
+#refactor note: all schemes need to offer the same set of function names even if the way they work differs
+#refactor note: I suppose this means having child cryptoscheme classes. I'm not sure how this will work
 
 @dataclass(frozen=True)
 class CryptoScheme:
