@@ -75,7 +75,8 @@ from cryptography.hazmat.primitives import serialization
 
 from .packet import CVPacket
 from . import crypto
-
+#refactor note: pubkey and privkey should be from the local crypto module scheme not from cryptography directly
+#refactor note: serialisation should be from teh local crypto module scheme object  not from cryptography directly
 
 class AuthType(Enum):
     """
@@ -152,6 +153,7 @@ class PublicKeyProvider(Protocol):
     """
 
     def get_public_key(self, callsign: str) -> Optional[Ed25519PublicKey]:
+        #refactor note: the key should be a pubkey from the local crypto scheme object not the direct Ed25519PublicKey
         """
         Retrieve public key for given callsign.
 
@@ -195,6 +197,8 @@ def ensure_bytes(payload) -> bytes:
 
 
 def generate_keypair(key_type: str):
+    #refactor note: rather than a key_type this function should accept a crypto scheme object from the crypto module that can generate scheme specific key pairs
+    #refactor note:the key pairs produced should be pubkey and privkey from the local crypto module scheme object
     """
     Generate a cryptographic keypair.
 
@@ -220,6 +224,7 @@ def generate_and_save_keypair(
     public_path: Path,
     key_type="ed25519",
 ):
+    #refactor note:the keys produced should be pubkey and privkey as per local crypto scheme object
     """
     Generate keypair and save to disk in PEM format.
 
@@ -245,6 +250,7 @@ def generate_and_save_keypair(
 
 
 def serialize_private_key(priv: Ed25519PrivateKey) -> bytes:
+    #refactor note: this function should be moved to the scheme object as well and done there but can be called for using 'privkey' here
     """
     Serialize private key to PEM (PKCS8, unencrypted).
     """
@@ -256,6 +262,7 @@ def serialize_private_key(priv: Ed25519PrivateKey) -> bytes:
 
 
 def serialize_public_key(pub: Ed25519PublicKey) -> bytes:
+    #refactor note: this function should be moved to the scheme object as well and done there but can be called for using 'pubkey' here
     """
     Serialize public key to PEM (SubjectPublicKeyInfo).
     """
@@ -266,6 +273,7 @@ def serialize_public_key(pub: Ed25519PublicKey) -> bytes:
 
 
 def load_private_key(path: Path) -> Ed25519PrivateKey:
+    #refactor note: this function should be moved to the scheme object as well and done there but called here to generate a crypto scheme object 'privkey'
     """
     Load Ed25519 private key from PEM file.
 
@@ -285,6 +293,7 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
 
 
 def load_public_key(path: Path) -> Ed25519PublicKey:
+    #refactor note: this function should be moved to the scheme object as well and done there but called here to generate a crypto scheme object 'pubkey'
     """
     Load Ed25519 public key from PEM file.
 
@@ -319,6 +328,8 @@ def sign_packet(
     packet: CVPacket,
     private_key: Ed25519PrivateKey,
 ) -> None:
+    #refactor note: this function should consume a crypto scheme object 'privkey' not the specific key as it does now
+    #refactor note: ths use of the crypto signing function here should move to the scheme object and sign with the schemes signing function
     """
     Sign packet payload and attach signature in-place.
 
@@ -345,6 +356,8 @@ def verify_packet(
     packet: CVPacket,
     keyring: PublicKeyProvider,
 ) -> AuthResult:
+    #refactor note: careful work is needed here to ensure the pubkey is gathered in a forgiving way and that verification is forgiving 
+    #refactor note: verification should be forgiving in that alternate schemes should be tried before failure
     """
     Verify packet signature using provided keyring.
 
@@ -378,6 +391,8 @@ def verify_packet(
         )
 
     public_key = keyring.get_public_key(call_from_station(packet.from_call))
+    #refactor note: getting the public key for a mismatched scheme should not fail
+    #refactor note: the code should try to get the specified schemes public key first then try the others before returning none
     if public_key is None:
         return AuthResult(
             auth_type=AuthType.KEYNOTFOUND,
@@ -390,6 +405,9 @@ def verify_packet(
         signature=packet.signature,
         public_key=public_key,
     )
+    #refactor note: the verify code should be done by the scheme rather that at the crypto module directly
+    #refactor note: if the defined scheme fails verification the code should try other schemes before setting it to be invalid
+    #refactor note: I'm not sure who should own the checking across different schemes since the checking itself should be inside the scheme I think.
 
     if ok:
         return AuthResult(
