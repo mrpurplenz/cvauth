@@ -12,6 +12,9 @@ public_key  = "keys/public.pem"
 [cvauth.keystore]
 trusted_keys_dir = "trusted_keys"
 
+[cvauth.crypto]
+scheme = ""
+
 [cvauth.behaviour]
 allow_unsigned = true
 allow_invalid_signatures = true
