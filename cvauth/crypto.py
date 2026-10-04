@@ -1,53 +1,3 @@
-"""
-cvauth.crypto
-=============
-
-Cryptographic primitives for CVAuth authentication.
-
-This module provides a minimal wrapper around Ed25519 signing
-and verification for use within the CVAuth protocol.
-
-Design Goals
-------------
-
-- Use modern, secure defaults (Ed25519)
-- Avoid implicit key loading or serialization
-- Fail safely on misuse
-- Keep cryptographic boundaries explicit
-
-This module does NOT:
-
-- Generate keys
-- Store keys
-- Serialize keys
-- Manage trust models
-- Perform certificate validation
-
-It strictly performs detached signature operations.
-
-Algorithm
----------
-
-Ed25519 (RFC 8032) via the `cryptography` library:
-
-- Deterministic signatures
-- 64-byte signature output
-- 32-byte public keys
-- 32-byte private key seed
-
-Security Model
---------------
-
-The caller is responsible for:
-
-- Ensuring payload integrity before signing
-- Verifying signatures before trusting identity
-- Managing public key distribution
-- Preventing replay attacks (e.g., via nonces)
-
-This module only signs and verifies raw byte payloads.
-"""
-
 from dataclasses import dataclass
 from typing import Callable
 
@@ -55,24 +5,28 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-#refactor note: We will probably need to add a new class for every crypto scheme so that different serialisation and verification can be done for each
-#refactor note: The new scheme classes will then go as named objects into the schemes available registry
-#refactor note: all schemes need to offer the same set of function names even if the way they work differs
-#refactor note: I suppose this means having child cryptoscheme classes. I'm not sure how this will work
+
 
 @dataclass(frozen=True)
 class CryptoScheme:
-    """The detached-signature operations provided by a crypto scheme."""
+    """A named crypto scheme with the operations required by CVAuth.
+
+    The scheme is intentionally registry-driven so alternative algorithms can be
+    plugged in without changing the higher-level auth logic.
+    """
 
     name: str
+    generate_keypair: Callable[[], tuple[object, object]]
+    serialize_private: Callable[[object], bytes]
+    serialize_public: Callable[[object], bytes]
+    load_private: Callable[[bytes], object]
+    load_public: Callable[[bytes], object]
     sign: Callable[[bytes, object], bytes]
     verify: Callable[[bytes, bytes, object], bool]
 
 
 def sign(payload: bytes, private_key: Ed25519PrivateKey) -> bytes:
-    """
-    Generate an Ed25519 signature for a payload.
-    """
+    """Generate an Ed25519 signature for a payload."""
     if isinstance(private_key, str):
         raise TypeError(
             "private_key is a string not a key. "
@@ -95,9 +49,7 @@ def sign(payload: bytes, private_key: Ed25519PrivateKey) -> bytes:
 
 
 def verify(payload: bytes, signature: bytes, public_key: Ed25519PublicKey) -> bool:
-    """
-    Verify an Ed25519 signature.
-    """
+    """Verify an Ed25519 signature."""
     try:
         public_key.verify(signature, payload)
         return True
@@ -105,14 +57,56 @@ def verify(payload: bytes, signature: bytes, public_key: Ed25519PublicKey) -> bo
         return False
 
 
-DEFAULT_SCHEME = "ed25519"
-CRYPTO_SCHEMES: dict[str, CryptoScheme] = {
-    DEFAULT_SCHEME: CryptoScheme(
-        name=DEFAULT_SCHEME,
-        sign=sign,
-        verify=verify,
+def _generate_ed25519_keypair() -> tuple[Ed25519PrivateKey, Ed25519PublicKey]:
+    priv = Ed25519PrivateKey.generate()
+    pub = priv.public_key()
+    return priv, pub
+
+
+def _serialize_ed25519_private_key(priv: Ed25519PrivateKey) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+
+    return priv.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
     )
-}
+
+
+def _serialize_ed25519_public_key(pub: Ed25519PublicKey) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+
+    return pub.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def _load_ed25519_private_key(data: bytes) -> Ed25519PrivateKey:
+    from cryptography.hazmat.primitives import serialization
+
+    key = serialization.load_pem_private_key(data, password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise TypeError("Not an Ed25519 private key")
+    return key
+
+
+def _load_ed25519_public_key(data: bytes) -> Ed25519PublicKey:
+    from cryptography.hazmat.primitives import serialization
+
+    key = serialization.load_pem_public_key(data)
+    if not isinstance(key, Ed25519PublicKey):
+        raise TypeError("Not an Ed25519 public key")
+    return key
+
+
+DEFAULT_SCHEME = "ed25519"
+CRYPTO_SCHEMES: dict[str, CryptoScheme] = {}
+
+
+def register_scheme(scheme: CryptoScheme) -> None:
+    """Register a crypto scheme in the global registry."""
+    CRYPTO_SCHEMES[scheme.name] = scheme
 
 
 def available_schemes() -> tuple[str, ...]:
@@ -123,3 +117,17 @@ def available_schemes() -> tuple[str, ...]:
 def get_scheme(name: str) -> CryptoScheme:
     """Return the registered scheme by identifier."""
     return CRYPTO_SCHEMES[name]
+
+
+register_scheme(
+    CryptoScheme(
+        name=DEFAULT_SCHEME,
+        generate_keypair=_generate_ed25519_keypair,
+        serialize_private=_serialize_ed25519_private_key,
+        serialize_public=_serialize_ed25519_public_key,
+        load_private=_load_ed25519_private_key,
+        load_public=_load_ed25519_public_key,
+        sign=sign,
+        verify=verify,
+    )
+)
