@@ -49,6 +49,7 @@ class TestCryptoRegistry(unittest.TestCase):
 
         custom = CryptoScheme(
             name=name,
+            description=scheme.description,
             generate_keypair=scheme.generate_keypair,
             serialize_private=scheme.serialize_private,
             serialize_public=scheme.serialize_public,
