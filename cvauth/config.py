@@ -14,6 +14,7 @@ except ModuleNotFoundError:
 import tomli_w
 from importlib.resources import files
 from platformdirs import user_config_dir
+from .crypto import DEFAULT_SCHEME
 
 APP_NAME = "cvauth"
 CONFIG_FILENAME = "cvauth.toml"
@@ -174,10 +175,14 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
         public_key=keys_section.get("public_key"),
     )
 
-    crypto = CryptoConfig(
-        scheme=crypto_section.get("scheme", ""),
-    )
+    #crypto = CryptoConfig(
+    #    scheme=crypto_section.get("scheme", ""),
+    #)
 
+    crypto = CryptoConfig(
+        scheme=crypto_section.get("scheme") or DEFAULT_SCHEME,
+    )
+    
     behaviour = BehaviourConfig(
         allow_unsigned=behaviour_section.get("allow_unsigned", True),
         allow_invalid_signatures=behaviour_section.get("allow_invalid_signatures", True),
