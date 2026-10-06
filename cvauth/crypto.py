@@ -23,7 +23,7 @@ class CryptoScheme:
     """
 
     name: str
-    ddescription: str
+    description: str
     generate_keypair: Callable[[], tuple[object, object]]
     serialize_private: Callable[[object], bytes]
     serialize_public: Callable[[object], bytes]
