@@ -67,11 +67,11 @@ from dataclasses import dataclass
 from typing import Optional, Protocol
 from pathlib import Path
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PublicKey,
-    Ed25519PrivateKey,
-)
-from cryptography.hazmat.primitives import serialization
+#from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+#    Ed25519PublicKey,
+#    Ed25519PrivateKey,
+#)
+#from cryptography.hazmat.primitives import serialization
 
 from .packet import CVPacket
 from . import crypto
@@ -194,7 +194,7 @@ def ensure_bytes(payload) -> bytes:
     raise TypeError(f"Unsupported payload type: {type(payload)}")
 
 
-def generate_keypair(key_type: str):
+def dep_generate_keypair(key_type: str):
     """
     Generate a cryptographic keypair.
 
@@ -213,9 +213,12 @@ def generate_keypair(key_type: str):
     priv = Ed25519PrivateKey.generate()
     pub = priv.public_key()
     return priv, pub
+    
+def generate_keypair(scheme_name: str):
+    scheme = crypto.get_scheme(scheme_name)
+    return scheme.generate_keypair()
 
-
-def generate_and_save_keypair(
+def dep_generate_and_save_keypair(
     private_path: Path,
     public_path: Path,
     key_type="ed25519",
@@ -243,8 +246,27 @@ def generate_and_save_keypair(
 
     return private_path, public_path
 
+def generate_and_save_keypair(
+    private_path: Path,
+    public_path: Path,
+    scheme_name: str = crypto.DEFAULT_SCHEME,
+):
+    priv, pub = generate_keypair(scheme_name)
 
-def serialize_private_key(priv: Ed25519PrivateKey) -> bytes:
+    private_path.parent.mkdir(parents=True, exist_ok=True)
+    public_path.parent.mkdir(parents=True, exist_ok=True)
+
+    private_path.write_bytes(
+        serialize_private_key(priv, scheme_name)
+    )
+
+    public_path.write_bytes(
+        serialize_public_key(pub, scheme_name)
+    )
+
+    return private_path, public_path
+
+def dep_serialize_private_key(priv: Ed25519PrivateKey) -> bytes:
     """
     Serialize private key to PEM (PKCS8, unencrypted).
     """
@@ -253,9 +275,15 @@ def serialize_private_key(priv: Ed25519PrivateKey) -> bytes:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+    
+def serialize_private_key(
+    private_key: object,
+    scheme_name: str,
+) -> bytes:
+    scheme = crypto.get_scheme(scheme_name)
+    return scheme.serialize_private(private_key)
 
-
-def serialize_public_key(pub: Ed25519PublicKey) -> bytes:
+def dep_serialize_public_key(pub: Ed25519PublicKey) -> bytes:
     """
     Serialize public key to PEM (SubjectPublicKeyInfo).
     """
@@ -263,9 +291,15 @@ def serialize_public_key(pub: Ed25519PublicKey) -> bytes:
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
+    
+def serialize_public_key(
+    public_key: object,
+    scheme_name: str,
+) -> bytes:
+    scheme = crypto.get_scheme(scheme_name)
+    return scheme.serialize_public(public_key)
 
-
-def load_private_key(path: Path) -> Ed25519PrivateKey:
+def dep_load_private_key(path: Path) -> Ed25519PrivateKey:
     """
     Load Ed25519 private key from PEM file.
 
@@ -282,7 +316,16 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
         raise TypeError("Not an Ed25519 private key")
 
     return key
+    
+def load_private_key(
+    path: Path,
+    scheme_name: str,
+) -> object:
+    if not path.exists():
+        raise FileNotFoundError(f"Private key not found: {path}")
 
+    scheme = crypto.get_scheme(scheme_name)
+    return scheme.load_private(path.read_bytes())
 
 def load_public_key(path: Path) -> Ed25519PublicKey:
     """
@@ -315,7 +358,7 @@ class AuthResult:
     reason: Optional[str]
 
 
-def sign_packet(
+def dep_sign_packet(
     packet: CVPacket,
     private_key: Ed25519PrivateKey,
 ) -> None:
@@ -340,6 +383,23 @@ def sign_packet(
     packet.signature = signature
     packet.signed = True
 
+def sign_packet(
+    packet: CVPacket,
+    private_key: object,
+    scheme_name: str,
+) -> None:
+    if packet.payload is None:
+        raise ValueError("Cannot sign packet with no payload")
+
+    scheme = crypto.get_scheme(scheme_name)
+
+    signature = scheme.sign(
+        ensure_bytes(packet.payload),
+        private_key,
+    )
+
+    packet.signature = signature
+    packet.signed = True
 
 def verify_packet(
     packet: CVPacket,
