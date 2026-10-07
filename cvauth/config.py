@@ -91,7 +91,23 @@ class CVAuthConfig:
         if p.is_absolute():
             return p
         return (self.config_dir / p).resolve()
+        
+    def keypair_paths(self, scheme_name: str) -> tuple[Path, Path]:
+        """Return the private and public key paths for a crypto scheme."""
+        key_dir = self.config_dir / "keys" / scheme_name
+        return (
+            key_dir / "private.pem",
+            key_dir / "public.pem",
+        )
 
+    def trusted_key_path(self, callsign: str, scheme_name: str) -> Path:
+        """Return the scheme-aware path for a trusted public key."""
+        return (
+            self.config_dir
+            / "trusted_keys"
+            / callsign
+            / f"{scheme_name}.pem"
+        )
 
 def _merge_with_defaults(user_data: dict) -> dict:
     """Merge user config with defaults from template.
