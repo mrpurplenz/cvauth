@@ -128,6 +128,36 @@ class CVAuthConfig:
 
         return self.keypair_paths(scheme_name)
 
+    def resolve_trusted_key_path(
+        self,
+        callsign: str,
+        scheme_name: str,
+    ) -> Optional[Path]:
+        """Return the trusted public-key path for a station and scheme.
+
+        New scheme-aware paths take precedence over the existing legacy
+        callsign-only path.
+        """
+        callsign = callsign.upper()
+
+        # New scheme-aware location
+        scheme_path = self.trusted_key_path(callsign, scheme_name)
+        if scheme_path.exists():
+            return scheme_path
+
+        # Existing legacy location.
+        # Legacy trusted keys are assumed to use the default scheme.
+        if scheme_name == DEFAULT_SCHEME:
+            legacy_path = (
+                self.config_dir
+                / "trusted_keys"
+                / f"{callsign}.pem"
+            )
+            if legacy_path.exists():
+                return legacy_path
+
+        return None
+
 def _merge_with_defaults(user_data: dict) -> dict:
     """Merge user config with defaults from template.
 
