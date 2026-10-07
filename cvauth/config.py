@@ -109,6 +109,25 @@ class CVAuthConfig:
             / f"{scheme_name}.pem"
         )
 
+    def resolve_keypair_paths(self, scheme_name: str) -> tuple[Path, Path]:
+        """Return the keypair paths for a scheme, preserving legacy keys.
+
+        The existing configured key paths are treated as the legacy/default
+        keypair. Scheme-specific keypairs are used for other schemes.
+        """
+        if scheme_name == DEFAULT_SCHEME:
+            private_path = self.resolve_path(self.keys.private_key)
+            public_path = self.resolve_path(self.keys.public_key)
+
+            if private_path is None or public_path is None:
+                raise ConfigError(
+                    "No legacy keypair paths are configured"
+                )
+
+            return private_path, public_path
+
+        return self.keypair_paths(scheme_name)
+
 def _merge_with_defaults(user_data: dict) -> dict:
     """Merge user config with defaults from template.
 
