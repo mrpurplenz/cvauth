@@ -11,7 +11,7 @@ This module binds together:
 - Public key lookup
 - Authentication result classification
 """
-
+from __future__ import annotations
 import re
 from enum import Enum
 from dataclasses import dataclass
@@ -58,9 +58,12 @@ def call_from_station(station: str) -> str:
 
 
 class PublicKeyProvider(Protocol):
-    """Interface for retrieving public keys by callsign."""
+    """Interface for retrieving public-key records by callsign."""
 
-    def get_public_key(self, callsign: str) -> Optional[object]:
+    def get_public_key(
+        self,
+        callsign: str,
+    ) -> Optional[PublicKeyRecord]:
         ...
 
 
