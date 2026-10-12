@@ -140,6 +140,24 @@ def load_public_key(path: Path, scheme_name: str = crypto.DEFAULT_SCHEME) -> obj
     return scheme.load_public(path.read_bytes())
 
 
+@dataclass(frozen=True)
+class PublicKeyRecord:
+    """A public key associated with a callsign and crypto scheme."""
+
+    callsign: str
+    scheme_name: str
+    key: object
+
+
+@dataclass(frozen=True)
+class PrivateKeyRecord:
+    """A private key associated with a callsign and crypto scheme."""
+
+    callsign: str
+    scheme_name: str
+    key: object
+
+
 @dataclass
 class AuthResult:
     auth_type: Optional[AuthType]
