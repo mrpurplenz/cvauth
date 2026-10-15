@@ -63,6 +63,7 @@ class PublicKeyProvider(Protocol):
     def get_public_key(
         self,
         callsign: str,
+        scheme_name: str = crypto.DEFAULT_SCHEME,
     ) -> Optional[PublicKeyRecord]:
         ...
 
