@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import crypto
-from .auth import PublicKeyRecord
+from .auth import PublicKeyRecord, call_from_station
 from .config import CVAuthConfig
 
 
@@ -29,10 +29,7 @@ class Keyring:
         Scheme-aware paths take precedence over legacy paths. Legacy
         callsign-only keys are treated as the default crypto scheme.
         """
-        callsign = callsign.strip().upper()
-
-        if not callsign:
-            raise ValueError("Callsign must not be empty")
+        callsign = call_from_station(callsign)
 
         # Ask config.py to apply the agreed storage and fallback policy.
         key_path = self.config.resolve_trusted_key_path(
