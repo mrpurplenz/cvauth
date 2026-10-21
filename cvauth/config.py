@@ -1,3 +1,151 @@
+"""
+cvauth.config
+=============
+
+CVAuth configuration loading, defaults, and filesystem key layout.
+
+CONFIGURATION FILE
+------------------
+By default, CVAuth stores its configuration at the platform-specific user
+configuration directory, under:
+
+    cvauth/cvauth.toml
+
+The exact directory depends on the operating system. On Linux, this is
+typically:
+
+    ~/.config/cvauth/cvauth.toml
+
+The environment variable CVAUTH_CONFIG_DIR can override the configuration
+directory. When set, the configuration file is:
+
+    $CVAUTH_CONFIG_DIR/cvauth.toml
+
+Paths for keys are resolved relative to the directory containing the active
+configuration file unless they are absolute paths. This means that the
+configuration directory also acts as the root of the CVAuth key directory
+structure.
+
+CRYPTOGRAPHIC SCHEMES
+---------------------
+The [cvauth.crypto] scheme setting selects the cryptographic scheme used
+for the local identity's outgoing signatures.
+
+For example:
+
+    [cvauth.crypto]
+    scheme = "ed25519"
+
+The scheme name is significant: it is used in the directory and filename
+layout for scheme-specific keys. Use a scheme name registered with the
+CVAuth crypto registry.
+
+The configured outgoing signing scheme does not, by itself, determine which
+schemes may be used to verify incoming messages. Trusted public keys are
+associated with their own schemes through the trusted-key storage layout.
+
+KEY DIRECTORY LAYOUT
+--------------------
+CVAuth uses the following directory structure beneath the configuration
+directory:
+
+    cvauth/
+    ├── cvauth.toml
+    ├── keys/
+    │   └── <scheme-name>/
+    │       ├── private.pem
+    │       └── public.pem
+    └── trusted_keys/
+        ├── <CALLSIGN>.pem
+        └── <CALLSIGN>/
+            └── <scheme-name>.pem
+
+LOCAL KEY PAIRS
+---------------
+Scheme-specific key pairs are stored under:
+
+    keys/<scheme-name>/private.pem
+    keys/<scheme-name>/public.pem
+
+For example, a key pair for the "chattervox-p192" scheme uses:
+
+    keys/chattervox-p192/private.pem
+    keys/chattervox-p192/public.pem
+
+The default scheme retains compatibility with existing installations:
+its private and public key paths are taken from [cvauth.keys] in the
+configuration file. These configured paths may be absolute or relative
+to the configuration directory.
+
+Consequently, the default scheme's key pair does not automatically move
+to keys/<scheme-name>/. Existing key files remain where they are.
+
+TRUSTED PUBLIC KEYS
+-------------------
+Trusted public keys are stored beneath:
+
+    trusted_keys/
+
+For a scheme-specific trusted key, use:
+
+    trusted_keys/<CALLSIGN>/<scheme-name>.pem
+
+For example, a trusted Ed25519 key belonging to station ZL1ABC is stored at:
+
+    trusted_keys/ZL1ABC/ed25519.pem
+
+A trusted ChatterVox P-192 key for the same station is stored at:
+
+    trusted_keys/ZL1ABC/chattervox-p192.pem
+
+The callsign directory associates keys with a station, while the filename
+identifies the cryptographic scheme used to load and verify the key.
+
+LEGACY TRUSTED-KEY COMPATIBILITY
+--------------------------------
+Older installations may store a trusted public key directly at:
+
+    trusted_keys/<CALLSIGN>.pem
+
+These callsign-only files are interpreted as keys for the default scheme.
+For example:
+
+    trusted_keys/ZL1ABC.pem
+
+is treated as a default-scheme key.
+
+When resolving a trusted key for a particular scheme, CVAuth first checks
+the scheme-specific location:
+
+    trusted_keys/<CALLSIGN>/<scheme-name>.pem
+
+If that file exists, it takes precedence. For the default scheme only,
+CVAuth falls back to the legacy callsign-only location when the
+scheme-specific file does not exist.
+
+Legacy key files are not moved or renamed automatically. This allows
+existing installations to continue working while scheme-specific keys
+are introduced.
+
+IMPORTANT KEY-MANAGEMENT NOTES
+------------------------------
+* Use the exact registered scheme name in directory and filename paths.
+* Callsign directories and legacy filenames use uppercase callsigns.
+* Keep private keys private. Do not distribute private.pem files as
+  trusted public keys.
+* To trust another station, place that station's PUBLIC key in the
+  appropriate trusted_keys location for its scheme.
+* A trusted key's storage location identifies the scheme used to load it.
+  The key file must therefore contain a public key in the expected format.
+* The configuration directory is the root for relative key paths; it is
+  not necessarily the current working directory.
+
+This module defines configuration structures and path-resolution policy.
+Cryptographic operations and supported scheme definitions are provided by
+cvauth.crypto.
+
+
+"""
 from __future__ import annotations
 
 import os

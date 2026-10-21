@@ -1,9 +1,9 @@
 import unittest
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from cvauth.crypto import (
     DEFAULT_SCHEME,
+    CHATTERVOX_SCHEME,
     CryptoScheme,
     available_schemes,
     get_scheme,
@@ -73,3 +73,64 @@ class TestCryptoRegistry(unittest.TestCase):
     def test_unknown_scheme_raises_key_error(self):
         with self.assertRaises(KeyError):
             get_scheme("does-not-exist")
+
+class TestChattervoxP192(unittest.TestCase):
+    def setUp(self):
+        self.scheme = get_scheme(CHATTERVOX_SCHEME)
+        self.payload = b"ChatterVox P-192 cryptographic test"
+
+    def test_scheme_is_registered(self):
+        self.assertIn(CHATTERVOX_SCHEME, available_schemes())
+
+    def test_generate_and_sign(self):
+        private_key, public_key = self.scheme.generate_keypair()
+
+        signature = self.scheme.sign(self.payload, private_key)
+
+        self.assertTrue(
+            self.scheme.verify(self.payload, signature, public_key)
+        )
+
+    def test_modified_payload_fails_verification(self):
+        private_key, public_key = self.scheme.generate_keypair()
+        signature = self.scheme.sign(self.payload, private_key)
+
+        self.assertFalse(
+            self.scheme.verify(b"modified payload", signature, public_key)
+        )
+
+    def test_wrong_public_key_fails_verification(self):
+        private_key, _ = self.scheme.generate_keypair()
+        _, other_public_key = self.scheme.generate_keypair()
+        signature = self.scheme.sign(self.payload, private_key)
+
+        self.assertFalse(
+            self.scheme.verify(self.payload, signature, other_public_key)
+        )
+
+    def test_key_serialization_round_trip(self):
+        private_key, public_key = self.scheme.generate_keypair()
+
+        private_bytes = self.scheme.serialize_private(private_key)
+        public_bytes = self.scheme.serialize_public(public_key)
+
+        self.assertEqual(len(private_bytes), 48)
+        self.assertEqual(len(public_bytes), 98)
+        self.assertTrue(public_bytes.startswith(b"04"))
+
+        loaded_private = self.scheme.load_private(private_bytes)
+        loaded_public = self.scheme.load_public(public_bytes)
+
+        signature = self.scheme.sign(self.payload, loaded_private)
+
+        self.assertTrue(
+            self.scheme.verify(self.payload, signature, loaded_public)
+        )
+
+    def test_malformed_private_key_is_rejected(self):
+        with self.assertRaises(TypeError):
+            self.scheme.load_private(b"not-a-valid-key")
+
+    def test_invalid_private_scalar_is_rejected(self):
+        with self.assertRaises(TypeError):
+            self.scheme.load_private(b"0" * 48)

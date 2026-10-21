@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from typing import Callable
-
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import (
     ECDSA,
     SECP192R1,
@@ -12,7 +13,6 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     EllipticCurvePublicKey,
     EllipticCurvePublicNumbers,
 )
-from cryptography.hazmat.primitives import hashes
 
 @dataclass(frozen=True)
 class CryptoScheme:
@@ -97,11 +97,20 @@ def _generate_ed25519_keypair() -> tuple[Ed25519PrivateKey, Ed25519PublicKey]:
     pub = priv.public_key()
     return priv, pub
     
-def _generate_chattervox_keypair() -> tuple[
+def depr_generate_chattervox_keypair() -> tuple[
     EllipticCurvePrivateKey,
     EllipticCurvePublicKey,
 ]:
     priv = EllipticCurvePrivateKey.generate(SECP192R1())
+    pub = priv.public_key()
+    return priv, pub
+
+def _generate_chattervox_keypair() -> tuple[
+    EllipticCurvePrivateKey,
+    EllipticCurvePublicKey,
+]:
+    """Generate a legacy ChatterVox ECDSA keypair using NIST P-192."""
+    priv = ec.generate_private_key(SECP192R1())
     pub = priv.public_key()
     return priv, pub
 
@@ -147,7 +156,7 @@ def _load_ed25519_private_key(data: bytes) -> Ed25519PrivateKey:
         raise TypeError("Not an Ed25519 private key")
     return key
     
-def _load_chattervox_private_key(
+def depr_load_chattervox_private_key(
     data: bytes,
 ) -> EllipticCurvePrivateKey:
     try:
@@ -159,6 +168,27 @@ def _load_chattervox_private_key(
         value,
         SECP192R1(),
     )
+
+def _load_chattervox_private_key(
+    data: bytes,
+) -> EllipticCurvePrivateKey:
+    """Load a legacy ChatterVox private scalar encoded as 48 hex digits."""
+    try:
+        encoded = data.decode("ascii")
+
+        if len(encoded) != 48:
+            raise ValueError("Expected exactly 48 hexadecimal digits")
+
+        value = int(encoded, 16)
+
+        # Require the original fixed-width hexadecimal representation.
+        if any(char not in "0123456789abcdefABCDEF" for char in encoded):
+            raise ValueError("Invalid hexadecimal private scalar")
+
+        return ec.derive_private_key(value, SECP192R1())
+
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise TypeError("Invalid Chattervox P-192 private key") from exc
 
 def _load_ed25519_public_key(data: bytes) -> Ed25519PublicKey:
     from cryptography.hazmat.primitives import serialization

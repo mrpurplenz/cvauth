@@ -1,7 +1,7 @@
 import unittest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cvauth.packet import CVPacket
-from cvauth.auth import sign_packet, verify_packet, AuthType
+from cvauth.auth import sign_packet, verify_packet, AuthType, PublicKeyRecord
 from cvauth.crypto import sign, verify
 from cvauth.config import ensure_config
 import os
@@ -14,14 +14,37 @@ except ModuleNotFoundError:
 import tomli_w
 
 
-class DictKeyring:
+class depr_DictKeyring:
     def __init__(self, mapping):
         self.mapping = mapping
 
     def get_public_key(self, callsign):
         return self.mapping.get(callsign)
 
+class DictKeyring:
+    def __init__(self, mapping):
+        self.mapping = mapping
 
+    def get_public_keys(self, callsign):
+        value = self.mapping.get(callsign)
+
+        if value is None:
+            return []
+
+        if isinstance(value, list):
+            return value
+
+        if isinstance(value, PublicKeyRecord):
+            return [value]
+
+        # Allow existing Ed25519 test fixtures to remain simple.
+        return [
+            PublicKeyRecord(
+                callsign=callsign,
+                scheme_name="ed25519",
+                key=value,
+            )
+        ]
 class TestAuthRoundTrip(unittest.TestCase):
 
     def setUp(self):

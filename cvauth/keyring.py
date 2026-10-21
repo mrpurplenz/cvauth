@@ -62,3 +62,23 @@ class Keyring:
             scheme_name=scheme_name,
             key=key,
         )
+
+    def get_public_keys(
+        self,
+        callsign: str,
+    ) -> list[PublicKeyRecord]:
+        """Load all available trusted public keys for a station.
+
+        Each key is loaded using its registered crypto scheme.
+        Legacy callsign-only keys are handled by the configuration
+        resolver for the default scheme.
+        """
+        callsign = call_from_station(callsign)
+        records = []
+
+        for scheme_name in crypto.available_schemes():
+            record = self.get_public_key(callsign, scheme_name)
+            if record is not None:
+                records.append(record)
+
+        return records

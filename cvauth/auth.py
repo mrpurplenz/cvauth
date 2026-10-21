@@ -57,7 +57,7 @@ def call_from_station(station: str) -> str:
     return callsign
 
 
-class PublicKeyProvider(Protocol):
+class depr_PublicKeyProvider(Protocol):
     """Interface for retrieving public-key records by callsign."""
 
     def get_public_key(
@@ -65,6 +65,16 @@ class PublicKeyProvider(Protocol):
         callsign: str,
         scheme_name: str = crypto.DEFAULT_SCHEME,
     ) -> Optional[PublicKeyRecord]:
+        ...
+
+class PublicKeyProvider(Protocol):
+    """Interface for retrieving trusted public keys by callsign."""
+
+    def get_public_keys(
+        self,
+        callsign: str,
+    ) -> list[PublicKeyRecord]:
+        """Return all available trusted keys for this station."""
         ...
 
 
@@ -184,7 +194,7 @@ def sign_packet(
     packet.signed = True
 
 
-def verify_packet(
+def depr_verify_packet(
     packet: CVPacket,
     keyring: PublicKeyProvider,
     *,
@@ -238,4 +248,113 @@ def verify_packet(
         auth_type=AuthType.INVALID,
         signer=packet.from_call,
         reason="Signature verification failed",
+    )
+
+def verify_packet(
+    packet: CVPacket,
+    keyring: PublicKeyProvider,
+    *,
+    scheme_names: Optional[list[str]] = None,
+) -> AuthResult:
+    """Verify a packet against trusted keys using each key's own scheme.
+
+    A packet is valid if any eligible trusted public key verifies its
+    signature. The local outgoing signing preference does not determine
+    which schemes may verify incoming packets.
+
+    ``scheme_names``, when provided, restricts verification to those
+    registered schemes.
+    """
+    if not packet.signed or packet.signature is None:
+        return AuthResult(
+            auth_type=AuthType.NOTSIGNED,
+            signer=None,
+            reason="Packet is not signed",
+        )
+
+    if not packet.from_call:
+        return AuthResult(
+            auth_type=AuthType.KEYNOTFOUND,
+            signer=None,
+            reason="No callsign available for key lookup",
+        )
+
+    callsign = call_from_station(packet.from_call)
+
+    # Prefer the multi-key interface. Retain compatibility with older
+    # keyring implementations that expose only get_public_key().
+    get_public_keys = getattr(keyring, "get_public_keys", None)
+
+    if callable(get_public_keys):
+        records = get_public_keys(callsign)
+    else:
+        legacy_get_key = getattr(keyring, "get_public_key", None)
+        legacy_key = legacy_get_key(callsign) if callable(legacy_get_key) else None
+
+        if legacy_key is None:
+            records = []
+        elif isinstance(legacy_key, PublicKeyRecord):
+            records = [legacy_key]
+        else:
+            # Older providers returned a raw key. Historically these
+            # providers used the default scheme.
+            records = [
+                PublicKeyRecord(
+                    callsign=callsign,
+                    scheme_name=crypto.DEFAULT_SCHEME,
+                    key=legacy_key,
+                )
+            ]
+
+    if not records:
+        return AuthResult(
+            auth_type=AuthType.KEYNOTFOUND,
+            signer=packet.from_call,
+            reason=f"No trusted public keys found for {callsign}",
+        )
+
+    allowed_schemes = set(scheme_names) if scheme_names is not None else None
+
+    try:
+        payload = ensure_bytes(packet.payload)
+    except (TypeError, ValueError) as exc:
+        return AuthResult(
+            auth_type=AuthType.INVALID,
+            signer=packet.from_call,
+            reason=f"Invalid packet payload: {exc}",
+        )
+
+    attempted = 0
+
+    for record in records:
+        if allowed_schemes is not None and record.scheme_name not in allowed_schemes:
+            continue
+
+        attempted += 1
+
+        try:
+            scheme = crypto.get_scheme(record.scheme_name)
+
+            if scheme.verify(payload, packet.signature, record.key):
+                return AuthResult(
+                    auth_type=AuthType.VALID,
+                    signer=packet.from_call,
+                    reason=f"Signature verified using {record.scheme_name}",
+                )
+        except Exception:
+            # A key that cannot verify under its registered scheme must
+            # not prevent other trusted keys from being tried.
+            continue
+
+    if attempted == 0:
+        return AuthResult(
+            auth_type=AuthType.KEYNOTFOUND,
+            signer=packet.from_call,
+            reason="No trusted keys matched the requested crypto schemes",
+        )
+
+    return AuthResult(
+        auth_type=AuthType.INVALID,
+        signer=packet.from_call,
+        reason="Signature verification failed for all trusted keys",
     )
