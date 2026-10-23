@@ -2,7 +2,7 @@ import unittest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cvauth.packet import CVPacket
 from cvauth.auth import sign_packet, verify_packet, AuthType, PublicKeyRecord
-from cvauth.crypto import sign, verify
+from cvauth.crypto import DEFAULT_SCHEME, CHATTERVOX_SCHEME, sign, verify, get_scheme
 from cvauth.config import ensure_config
 import os
 import zlib
@@ -21,7 +21,7 @@ class depr_DictKeyring:
     def get_public_key(self, callsign):
         return self.mapping.get(callsign)
 
-class DictKeyring:
+class depr_DictKeyring:
     def __init__(self, mapping):
         self.mapping = mapping
 
@@ -45,6 +45,21 @@ class DictKeyring:
                 key=value,
             )
         ]
+
+class DictKeyring:
+    def __init__(self, mapping):
+        self.mapping = mapping
+
+    def get_public_keys(self, callsign):
+        value = self.mapping.get(callsign, [])
+
+        # Allow tests to provide either one record or a list of records.
+        if value is None:
+            return []
+        if isinstance(value, PublicKeyRecord):
+            return [value]
+        return list(value)
+
 class TestAuthRoundTrip(unittest.TestCase):
 
     def setUp(self):
@@ -54,8 +69,15 @@ class TestAuthRoundTrip(unittest.TestCase):
         self.callsign = "ZL1TST"
         self.payload = b"Hello AX.25. This will want to be able to compress 000000000000000000000"
 
+        #self.keyring = DictKeyring({
+        #    self.callsign: self.public_key
+        #})
         self.keyring = DictKeyring({
-            self.callsign: self.public_key
+            self.callsign: PublicKeyRecord(
+                callsign=self.callsign,
+                scheme_name=DEFAULT_SCHEME,
+                key=self.public_key,
+            )
         })
 
     def test_signed_packet_verifies(self):
@@ -173,3 +195,103 @@ class TestConfig(unittest.TestCase):
             self.assertIn("cvauth", data)
             self.assertIn("identity", data["cvauth"])
             self.assertEqual(data["cvauth"]["identity"]["callsign"], "")
+
+class TestMultiSchemeAuth(unittest.TestCase):
+    def setUp(self):
+        self.callsign = "ZL1MUL"
+        self.payload = b"CVAuth multi-scheme authentication test"
+
+        self.ed_scheme = get_scheme(DEFAULT_SCHEME)
+        self.p192_scheme = get_scheme(CHATTERVOX_SCHEME)
+
+        self.ed_private, self.ed_public = self.ed_scheme.generate_keypair()
+        self.p192_private, self.p192_public = self.p192_scheme.generate_keypair()
+
+    def make_keyring(self, *records):
+        return DictKeyring({self.callsign: list(records)})
+
+    def test_ed25519_signature_validates_with_ed25519_record(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(
+            packet,
+            self.ed_private,
+            scheme_name=DEFAULT_SCHEME,
+        )
+
+        keyring = self.make_keyring(
+            PublicKeyRecord(self.callsign, DEFAULT_SCHEME, self.ed_public)
+        )
+
+        result = verify_packet(packet, keyring)
+        self.assertEqual(result.auth_type, AuthType.VALID)
+
+    def test_p192_signature_validates_with_p192_record(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(
+            packet,
+            self.p192_private,
+            scheme_name=CHATTERVOX_SCHEME,
+        )
+
+        keyring = self.make_keyring(
+            PublicKeyRecord(self.callsign, CHATTERVOX_SCHEME, self.p192_public)
+        )
+
+        result = verify_packet(packet, keyring)
+        self.assertEqual(result.auth_type, AuthType.VALID)
+
+    def test_second_trusted_key_can_validate_signature(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(
+            packet,
+            self.p192_private,
+            scheme_name=CHATTERVOX_SCHEME,
+        )
+
+        # Ed25519 is checked first and must fail. P-192 must then succeed.
+        keyring = self.make_keyring(
+            PublicKeyRecord(self.callsign, DEFAULT_SCHEME, self.ed_public),
+            PublicKeyRecord(self.callsign, CHATTERVOX_SCHEME, self.p192_public),
+        )
+
+        result = verify_packet(packet, keyring)
+        self.assertEqual(result.auth_type, AuthType.VALID)
+        self.assertIn(CHATTERVOX_SCHEME, result.reason)
+
+    def test_invalid_signature_with_multiple_keys(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        packet.signature = b"not a valid signature"
+        packet.signed = True
+
+        keyring = self.make_keyring(
+            PublicKeyRecord(self.callsign, DEFAULT_SCHEME, self.ed_public),
+            PublicKeyRecord(self.callsign, CHATTERVOX_SCHEME, self.p192_public),
+        )
+
+        result = verify_packet(packet, keyring)
+        self.assertEqual(result.auth_type, AuthType.INVALID)
+
+    def test_no_trusted_keys_returns_keynotfound(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(packet, self.ed_private)
+
+        result = verify_packet(packet, DictKeyring({}))
+        self.assertEqual(result.auth_type, AuthType.KEYNOTFOUND)
+
+    def test_payload_tampering_fails_for_p192(self):
+        packet = CVPacket(from_call=self.callsign, payload=self.payload)
+        sign_packet(
+            packet,
+            self.p192_private,
+            scheme_name=CHATTERVOX_SCHEME,
+        )
+        packet.payload = b"tampered payload"
+
+        keyring = self.make_keyring(
+            PublicKeyRecord(self.callsign, CHATTERVOX_SCHEME, self.p192_public)
+        )
+
+        result = verify_packet(packet, keyring)
+        self.assertEqual(result.auth_type, AuthType.INVALID)
+
+

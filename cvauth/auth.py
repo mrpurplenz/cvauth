@@ -73,7 +73,7 @@ class PublicKeyProvider(Protocol):
     def get_public_keys(
         self,
         callsign: str,
-    ) -> list[PublicKeyRecord]:
+    ) -> list["PublicKeyRecord"]:
         """Return all available trusted keys for this station."""
         ...
 
@@ -250,7 +250,7 @@ def depr_verify_packet(
         reason="Signature verification failed",
     )
 
-def verify_packet(
+def depr_verify_packet(
     packet: CVPacket,
     keyring: PublicKeyProvider,
     *,
@@ -357,4 +357,76 @@ def verify_packet(
         auth_type=AuthType.INVALID,
         signer=packet.from_call,
         reason="Signature verification failed for all trusted keys",
+    )
+
+def verify_packet(
+    packet: CVPacket,
+    keyring: PublicKeyProvider,
+    *,
+    scheme_names: Optional[list[str]] = None,
+) -> AuthResult:
+    """Verify a packet against trusted keys using each key's own scheme.
+
+    A packet is valid if any trusted public key for the sender verifies
+    its signature. The local outgoing-signature preference is irrelevant
+    to incoming verification.
+    """
+    if not packet.signed or packet.signature is None:
+        return AuthResult(
+            auth_type=AuthType.NOTSIGNED,
+            signer=None,
+            reason="Packet is not signed",
+        )
+
+    if not packet.from_call:
+        return AuthResult(
+            auth_type=AuthType.KEYNOTFOUND,
+            signer=None,
+            reason="No callsign available for key lookup",
+        )
+
+    callsign = call_from_station(packet.from_call)
+    public_keys = keyring.get_public_keys(callsign)
+
+    if not public_keys:
+        return AuthResult(
+            auth_type=AuthType.KEYNOTFOUND,
+            signer=packet.from_call,
+            reason=f"Public key for {callsign} not found",
+        )
+
+    # Optional compatibility/filter argument: only consider these schemes
+    # when explicitly requested. Each key is still checked with its own scheme.
+    allowed_schemes = set(scheme_names) if scheme_names else None
+
+    try:
+        payload = ensure_bytes(packet.payload)
+    except (TypeError, ValueError) as exc:
+        return AuthResult(
+            auth_type=AuthType.INVALID,
+            signer=packet.from_call,
+            reason=f"Invalid packet payload: {exc}",
+        )
+
+    for record in public_keys:
+        if allowed_schemes is not None and record.scheme_name not in allowed_schemes:
+            continue
+
+        try:
+            scheme = crypto.get_scheme(record.scheme_name)
+            if scheme.verify(payload, packet.signature, record.key):
+                return AuthResult(
+                    auth_type=AuthType.VALID,
+                    signer=packet.from_call,
+                    reason=f"Signature verified using {record.scheme_name}",
+                )
+        except Exception:
+            # A broken or incompatible key must not prevent checking
+            # the other trusted keys.
+            continue
+
+    return AuthResult(
+        auth_type=AuthType.INVALID,
+        signer=packet.from_call,
+        reason="Signature verification failed",
     )
