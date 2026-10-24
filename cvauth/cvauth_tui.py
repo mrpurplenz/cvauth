@@ -9,6 +9,7 @@ import pe.app
 import pe.monitor
 import ax25.netrom
 from pathlib import Path
+from . import crypto
 from .config import ensure_config, load_config, update_config_value, CVAuthConfig
 from .config_utils import (
 	request_callsign,
@@ -19,7 +20,8 @@ from .config_utils import (
 	)
 from .utilities import station2call
 from .packet import CVPacket
-from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, load_private_key, generate_and_save_keypair
+from .keyring import Keyring
+from .auth import sign_packet, verify_packet, AuthType, AuthResult, ensure_bytes, generate_and_save_keypair
 from .transport import connect_agwpe
 import os
 
@@ -27,7 +29,25 @@ import os
 # CONFIGURE
 # ====================
 
+
 class LocalKeyring:
+    """TUI adapter around the shared, scheme-aware keyring."""
+
+    def __init__(self, state, config: CVAuthConfig):
+        self.state = state
+        self.keyring = Keyring(config)
+
+    def get_public_keys(self, callsign: str):
+        if self.state.verbose:
+            callsign = station2call(callsign.upper())
+            self.state.messages.append(
+                f"looking for trusted keys for {callsign}"
+            )
+
+        return self.keyring.get_public_keys(callsign)
+
+
+class depr_LocalKeyring:
     def __init__(self, state, public_key_dir: Path, callsign: str):
         self.state = state
         self.public_key_dir = public_key_dir
@@ -404,8 +424,13 @@ def cmd_help(args, state):
         )
         return True
 
-    state.messages.append(f"[system] Usage: {cmd['usage']}")
-    state.messages.append(f"[system] " + cmd["help"])
+    #state.messages.append(f"[system] Usage: {cmd['usage']}")
+
+    for line in cmd["help"].splitlines():
+        state.messages.append("[system] " + line)
+    for line in cmd["usage"].splitlines():
+        state.messages.append("[system] " + line)
+    #state.messages.append(f"[system] " + cmd["help"])
     return True
 
 def cmd_sign(args, state):
@@ -423,8 +448,126 @@ def cmd_verbose(args, state):
 def cmd_filter(args, state):
     return True
 
+#def cmd_status(args, state):
+#    return True
+
+
 def cmd_status(args, state):
+    """Display application status at the requested detail level."""
+
+    if len(args) > 1:
+        state.messages.append("[system] Usage: /status [1|2|3]")
+        return True
+
+    try:
+        level = int(args[0]) if args else 1
+    except ValueError:
+        state.messages.append(
+            "[error] Invalid verbosity. Use /status [1|2|3]"
+        )
+        return True
+
+    if level not in (1, 2, 3):
+        state.messages.append(
+            "[error] Invalid verbosity. Use /status [1|2|3]"
+        )
+        return True
+
+    def add(label, value):
+        state.messages.append(f"[system] {label:<22} {value}")
+
+    def enabled(value):
+        return "Enabled" if value else "Disabled"
+
+    state.messages.append("[system] CVAuth application status")
+    state.messages.append("[system] " + "-" * 46)
+
+    # Level 1: operational status.
+    add("Callsign:", state.callsign)
+    add("SSID:", state.ssid)
+    add("Destination:", state.destination)
+    add("Signing:", enabled(state.signing))
+    add("Crypto scheme:", state.scheme or "Not initialised")
+    add("Verbose mode:", enabled(state.verbose))
+    add("NET/ROM nodes:", len(state.netrom_nodes))
+
+    if level >= 2:
+        state.messages.append("[system] ")
+        state.messages.append("[system] Configuration and keys")
+        state.messages.append("[system] " + "-" * 46)
+
+        config = state.config
+
+        if config is None:
+            add("Configuration:", "Not initialised")
+        else:
+            # Report the configured scheme separately from the
+            # scheme currently held in application state.
+            crypto = getattr(config, "crypto", None)
+            configured_scheme = getattr(crypto, "scheme", None)
+            add(
+                "Configured scheme:",
+                configured_scheme or "Not configured",
+            )
+
+            # Report the configuration path if this version of
+            # CVAuth exposes it.
+            config_location = getattr(config, "config_location", None)
+            config_path = getattr(config_location, "config_path", None)
+            add("Config file:", config_path or "Not available")
+
+            if configured_scheme:
+                try:
+                    private_path, public_path = (
+                        config.resolve_keypair_paths(configured_scheme)
+                    )
+
+                    add("Private key path:", private_path)
+                    add("Public key path:", public_path)
+                    add(
+                        "Private key file:",
+                        "Present" if private_path.is_file() else "Missing",
+                    )
+                    add(
+                        "Public key file:",
+                        "Present" if public_path.is_file() else "Missing",
+                    )
+                except (OSError, ValueError, TypeError, AttributeError) as exc:
+                    add("Key paths:", f"Unable to resolve ({exc})")
+
+        add(
+            "Stored private path:",
+            state.private_key_path or "Not set",
+        )
+        add(
+            "Stored public path:",
+            state.public_key_path or "Not set",
+        )
+
+    if level >= 3:
+        state.messages.append("[system] ")
+        state.messages.append("[system] Runtime diagnostics")
+        state.messages.append("[system] " + "-" * 46)
+
+        add("Running:", enabled(state.running))
+        add("UI app:", type(state.app).__name__ if state.app else "Not initialised")
+        add("Via path:", state.via or "Not set")
+        add("Message count:", len(state.messages))
+        add("NET/ROM node records:", len(state.node_data))
+
+        add(
+            "Display dimensions:",
+            f"{state.disp_width} x {state.disp_height}",
+        )
+        add("Scroll offset:", state.scroll_offset)
+        add("Body Y position:", state.body_y)
+        add("Input buffer length:", len(state.input_buffer))
+
+    state.messages.append(
+        f"[system] Status report complete (detail level {level})."
+    )
     return True
+
 
 def cmd_destination(args, state):
     dest = args[0].strip().upper()
@@ -566,10 +709,18 @@ COMMANDS = {
         "help": "Set destination callsign filter",
         "usage": "/filter STRING or /filter -"
     },
+
     "status": {
         "handler": cmd_status,
-        "help": "Show current status",
-        "usage": "/status"
+        "help": "Display CVAuth application status.",
+
+        "usage":(
+            "/status [1|2|3]"
+            "  Optional detail levels: 1 = operational settings; \n"
+            "  2 = configuration and key-file paths and availability; \n"
+            "  3 = runtime and terminal diagnostics. \n"
+            "  No key contents are displayed."
+        ),
     },
     "destination": {
         "handler": cmd_destination,
@@ -623,19 +774,36 @@ def dispatch_command(line, state):
 # AUTHENTICATION
 # ====================
 
-def sign_outgoing(line, state):
 
+def sign_outgoing(line, state):
     pkt = CVPacket(
         from_call=state.callsign,
         payload=ensure_bytes(line),
     )
+
     config = state.config
-    private_key_path = config.keys.private_key
-    private_key_Posix = Path(private_key_path)
-    private_key_file = config.resolve_path(private_key_Posix)
-    private_key_deserial = load_private_key(private_key_file)
-    sign_packet(pkt, private_key_deserial)
+    scheme_name = config.crypto.scheme
+    private_key_path, _ = config.resolve_keypair_paths(scheme_name)
+
+    scheme = crypto.get_scheme(scheme_name)
+    private_key = scheme.load_private(private_key_path.read_bytes())
+
+    sign_packet(pkt, private_key, scheme_name=scheme_name)
     return pkt
+
+#def depr_sign_outgoing(line, state):
+#
+#    pkt = CVPacket(
+#        from_call=state.callsign,
+#        payload=ensure_bytes(line),
+#    )
+#    config = state.config
+#    private_key_path = config.keys.private_key
+#    private_key_Posix = Path(private_key_path)
+#    private_key_file = config.resolve_path(private_key_Posix)
+#    private_key_deserial = load_private_key(private_key_file)
+#    sign_packet(pkt, private_key_deserial)
+#    return pkt
 
 def verify_cvauth(received_payload: bytes, call_from: str, keyring: LocalKeyring):
     """
@@ -942,26 +1110,26 @@ def scan_and_warn(reply_bytes: bytes, state, term):
 # =====================
 def show_splash(term):
     splash = [
-" ________            _________                                  ",
-" \______ \_______   /   _____/__ _______ ___  __ ____   ______  ",
-"  |    |  \_  __ \  \_____  \|  |  \__  \\\\  \/ // __ \ /  ___/",
-"  |    `   \  | \/  /        \  |  // __ \\\\   /\  ___/ \___ \ ",
-" /_______  /__|    /_______  /____/(____  /\_/  \___  >____  >  ",
-"         \/                \/           \/          \/     \/   ",
-"_____________   ____     _____          __  .__      ",
-"\_   ___ \   \ /   /    /  _  \  __ ___/  |_|  |__   ",
-"/    \  \/\   Y   /    /  /_\  \|  |  \   __\  |  \  ",
-"\     \____\     /    /    |    \  |  /|  | |   Y  \ ",
-" \______  / \___/     \____|__  /____/ |__| |___|  / ",
-"        \/                    \/                 \/  ",
-"       .__            __                           ",
-"  ____ |  |__ _____ _/  |_   _____  ______ ______  ",
-"_/ ___\|  |  \\\\__  \\\\   __\  \__  \ \____ \\\\____ \ ",
-"\  \___|   Y  \/ __ \|  |     / __ \|  |_> >  |_> >",
-" \___  >___|  (____  /__|    (____  /   __/|   __/ ",
-"     \/     \/     \/             \/|__|   |__|    ",
-"",
-"",
+r" ________            _________                                  ",
+r" \______ \_______   /   _____/__ _______ ___  __ ____   ______  ",
+r"  |    |  \_  __ \  \_____  \|  |  \__  \\  \/ // __ \ /  ___/",
+r"  |    `   \  | \/  /        \  |  // __ \\   /\  ___/ \___ \ ",
+r" /_______  /__|    /_______  /____/(____  /\_/  \___  >____  >  ",
+r"         \/                \/           \/          \/     \/   ",
+r"_____________   ____     _____          __  .__      ",
+r"\_   ___ \   \ /   /    /  _  \  __ ___/  |_|  |__   ",
+r"/    \  \/\   Y   /    /  /_\  \|  |  \   __\  |  \  ",
+r"\     \____\     /    /    |    \  |  /|  | |   Y  \ ",
+r" \______  / \___/     \____|__  /____/ |__| |___|  / ",
+r"        \/                    \/                 \/  ",
+r"       .__            __                           ",
+r"  ____ |  |__ _____ _/  |_   _____  ______ ______  ",
+r"_/ ___\|  |  \\__  \\   __\  \__  \ \____ \\____ \ ",
+r"\  \___|   Y  \/ __ \|  |     / __ \|  |_> >  |_> >",
+r" \___  >___|  (____  /__|    (____  /   __/|   __/ ",
+r"     \/     \/     \/             \/|__|   |__|    ",
+r"",
+r"",
         "CV Auth a chattervox authenticated chat terminal",
         "by Dr Suavé - ZL2DRS",
         "Based on ChatterVox by Brannon Dorsey,    KC3LZO ",
@@ -1074,21 +1242,21 @@ def main():
 
 
         # Load private key (now guaranteed to exist)
-        state.private_key = load_private_key(private_posix)
+        #state.private_key = load_private_key(private_posix)
 
     #public keys keyring
-    state.keyring = LocalKeyring(state,
-        public_key_dir=config.resolve_path(config.keys.public_key).parent,
-        callsign=config.identity.callsign
-    )
-
+    #state.keyring = LocalKeyring(state,
+    #    public_key_dir=config.resolve_path(config.keys.public_key).parent,
+    #    callsign=config.identity.callsign
+    #)
+    state.keyring = LocalKeyring(state, config)
 
     def shutdown(signum, frame):
         state.running = False
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
-    print("CVAuth Tui - Version 0.1.0 by ZL2DRS")
+    print("CVAuth Tui - Version 0.2.0 by ZL2DRS")
     print("[*] Starting AGW connection")
     connect_agwpe(app, AGW_HOST, AGW_PORT)
     #app.start(AGW_HOST, AGW_PORT)
