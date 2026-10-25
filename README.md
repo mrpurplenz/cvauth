@@ -102,6 +102,7 @@ python -c "import cvauth, sys; print('cvauth OK, Python', sys.version)"
 To run the terminal (for example) type
 
 ```bash
+source ~/cvauth/cvenv/bin/activate
 cvauth-tui
 ```
 
