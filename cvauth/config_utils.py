@@ -1,9 +1,12 @@
 # config_utils.py
+import builtins
 import re
 import sys
 
-def valid_callsign(call) -> bool:
+from .crypto import available_schemes
 
+
+def valid_callsign(call) -> bool:
     _CALLSIGN_RE = re.compile(
         r"""
         ^                           # start
@@ -12,7 +15,7 @@ def valid_callsign(call) -> bool:
         (?:-(?:[0-9]|1[0-5]))?      # optional -SSID (0–15)
         $                           # end
         """,
-        re.VERBOSE
+        re.VERBOSE,
     )
     if _CALLSIGN_RE.match(call):
         return True
@@ -20,20 +23,11 @@ def valid_callsign(call) -> bool:
     return False
 
 
-
 CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}$")
 
 
 def request_callsign(default: str | None = None) -> str:
-    """
-    Prompt the user for a station callsign.
-
-    If default is provided, it is returned immediately.
-
-    Raises:
-        RuntimeError if interactive input is unavailable.
-    """
-
+    """Prompt the user for a station callsign."""
     if default:
         return default.strip().upper()
 
@@ -68,10 +62,7 @@ def request_callsign(default: str | None = None) -> str:
 
 
 def request_ssid(default: int = 1) -> int:
-    """
-    Interactively request an AX.25 SSID from the user.
-    Returns a validated integer between 0 and 15.
-    """
+    """Prompt for an AX.25 SSID."""
     print("\nAX.25 SSID configuration")
     print("------------------------")
     print("The SSID distinguishes multiple stations using the same callsign.")
@@ -95,19 +86,17 @@ def request_ssid(default: int = 1) -> int:
         print("SSID must be between 0 and 15.")
 
 
-def request_keypair_paths(default_priv: str = "keys/private.pem",
-                          default_pub: str = "keys/public.pem") -> tuple[str, str]:
-    """
-    Prompt the user for private/public key locations.
-    Returns a tuple of (private_key_path, public_key_path).
-    """
-    if not hasattr(__builtins__, "input"):
+def request_keypair_paths(
+    default_priv: str = "keys/private.pem",
+    default_pub: str = "keys/public.pem",
+) -> tuple[str, str]:
+    """Prompt the user for private/public key locations."""
+    if not callable(getattr(builtins, "input", None)):
         raise RuntimeError("Interactive input unavailable")
 
     print("\nNo keypair is configured for this station.")
     print("A private/public keypair is required for authentication.\n")
 
-    # --- Private key -------------------------------------------------
     while True:
         try:
             value = input(f"Private key path [{default_priv}]: ").strip()
@@ -122,7 +111,6 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
             private_key = value
             break
 
-    # --- Public key --------------------------------------------------
     while True:
         try:
             value = input(f"Public key path [{default_pub}]: ").strip()
@@ -138,3 +126,44 @@ def request_keypair_paths(default_priv: str = "keys/private.pem",
             break
 
     return private_key, public_key
+
+
+def request_crypto_scheme(default: str | None = None) -> str:
+    """Prompt the user to select a registered crypto scheme."""
+    schemes = available_schemes()
+    if not schemes:
+        raise RuntimeError("No crypto schemes are registered")
+
+    default_choice = default if default in schemes else schemes[0]
+
+    if not callable(getattr(builtins, "input", None)):
+        raise RuntimeError("Interactive input unavailable")
+
+    print("\nCrypto scheme configuration")
+    print("--------------------------")
+    for index, scheme in enumerate(schemes, start=1):
+        marker = "*" if scheme == default_choice else " "
+        print(f"  {marker} {index}. {scheme}")
+    print()
+
+    while True:
+        try:
+            raw = input(
+                f"Select scheme enter for *default [{default_choice}] (number or name): "
+            ).strip()
+        except EOFError:
+            raise RuntimeError("Cannot prompt for crypto scheme (no stdin)")
+
+        if raw == "":
+            return default_choice
+
+        if raw.isdigit():
+            index = int(raw)
+            if 1 <= index <= len(schemes):
+                return schemes[index - 1]
+        elif raw in schemes:
+            return raw
+
+        print(f"Invalid selection. Choose one of: {', '.join(schemes)}")
+
+request_scheme = request_crypto_scheme

@@ -1,9 +1,158 @@
+"""
+cvauth.config
+=============
+
+CVAuth configuration loading, defaults, and filesystem key layout.
+
+CONFIGURATION FILE
+------------------
+By default, CVAuth stores its configuration at the platform-specific user
+configuration directory, under:
+
+    cvauth/cvauth.toml
+
+The exact directory depends on the operating system. On Linux, this is
+typically:
+
+    ~/.config/cvauth/cvauth.toml
+
+The environment variable CVAUTH_CONFIG_DIR can override the configuration
+directory. When set, the configuration file is:
+
+    $CVAUTH_CONFIG_DIR/cvauth.toml
+
+Paths for keys are resolved relative to the directory containing the active
+configuration file unless they are absolute paths. This means that the
+configuration directory also acts as the root of the CVAuth key directory
+structure.
+
+CRYPTOGRAPHIC SCHEMES
+---------------------
+The [cvauth.crypto] scheme setting selects the cryptographic scheme used
+for the local identity's outgoing signatures.
+
+For example:
+
+    [cvauth.crypto]
+    scheme = "ed25519"
+
+The scheme name is significant: it is used in the directory and filename
+layout for scheme-specific keys. Use a scheme name registered with the
+CVAuth crypto registry.
+
+The configured outgoing signing scheme does not, by itself, determine which
+schemes may be used to verify incoming messages. Trusted public keys are
+associated with their own schemes through the trusted-key storage layout.
+
+KEY DIRECTORY LAYOUT
+--------------------
+CVAuth uses the following directory structure beneath the configuration
+directory:
+
+    cvauth/
+    ├── cvauth.toml
+    ├── keys/
+    │   └── <scheme-name>/
+    │       ├── private.pem
+    │       └── public.pem
+    └── trusted_keys/
+        ├── <CALLSIGN>.pem
+        └── <CALLSIGN>/
+            └── <scheme-name>.pem
+
+LOCAL KEY PAIRS
+---------------
+Scheme-specific key pairs are stored under:
+
+    keys/<scheme-name>/private.pem
+    keys/<scheme-name>/public.pem
+
+For example, a key pair for the "chattervox-p192" scheme uses:
+
+    keys/chattervox-p192/private.pem
+    keys/chattervox-p192/public.pem
+
+The default scheme retains compatibility with existing installations:
+its private and public key paths are taken from [cvauth.keys] in the
+configuration file. These configured paths may be absolute or relative
+to the configuration directory.
+
+Consequently, the default scheme's key pair does not automatically move
+to keys/<scheme-name>/. Existing key files remain where they are.
+
+TRUSTED PUBLIC KEYS
+-------------------
+Trusted public keys are stored beneath:
+
+    trusted_keys/
+
+For a scheme-specific trusted key, use:
+
+    trusted_keys/<CALLSIGN>/<scheme-name>.pem
+
+For example, a trusted Ed25519 key belonging to station ZL1ABC is stored at:
+
+    trusted_keys/ZL1ABC/ed25519.pem
+
+A trusted ChatterVox P-192 key for the same station is stored at:
+
+    trusted_keys/ZL1ABC/chattervox-p192.pem
+
+The callsign directory associates keys with a station, while the filename
+identifies the cryptographic scheme used to load and verify the key.
+
+LEGACY TRUSTED-KEY COMPATIBILITY
+--------------------------------
+Older installations may store a trusted public key directly at:
+
+    trusted_keys/<CALLSIGN>.pem
+
+These callsign-only files are interpreted as keys for the default scheme.
+For example:
+
+    trusted_keys/ZL1ABC.pem
+
+is treated as a default-scheme key.
+
+When resolving a trusted key for a particular scheme, CVAuth first checks
+the scheme-specific location:
+
+    trusted_keys/<CALLSIGN>/<scheme-name>.pem
+
+If that file exists, it takes precedence. For the default scheme only,
+CVAuth falls back to the legacy callsign-only location when the
+scheme-specific file does not exist.
+
+Legacy key files are not moved or renamed automatically. This allows
+existing installations to continue working while scheme-specific keys
+are introduced.
+
+IMPORTANT KEY-MANAGEMENT NOTES
+------------------------------
+* Use the exact registered scheme name in directory and filename paths.
+* Callsign directories and legacy filenames use uppercase callsigns.
+* Keep private keys private. Do not distribute private.pem files as
+  trusted public keys.
+* To trust another station, place that station's PUBLIC key in the
+  appropriate trusted_keys location for its scheme.
+* A trusted key's storage location identifies the scheme used to load it.
+  The key file must therefore contain a public key in the expected format.
+* The configuration directory is the root for relative key paths; it is
+  not necessarily the current working directory.
+
+This module defines configuration structures and path-resolution policy.
+Cryptographic operations and supported scheme definitions are provided by
+cvauth.crypto.
+
+
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass, replace, asdict
+import os
+import sys
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Optional
-import os
 
 try:
     import tomllib  # Python 3.11+
@@ -11,25 +160,17 @@ except ModuleNotFoundError:
     import tomli as tomllib  # Python <=3.10
 
 import tomli_w
-from platformdirs import user_config_dir
 from importlib.resources import files
-
+from platformdirs import user_config_dir
+from .crypto import DEFAULT_SCHEME
 
 APP_NAME = "cvauth"
 CONFIG_FILENAME = "cvauth.toml"
 
 
-# ---------------------------------------------------------------------------
-# Errors
-# ---------------------------------------------------------------------------
-
 class ConfigError(RuntimeError):
     """Configuration is missing or invalid."""
 
-
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 
 def user_config_path() -> Path:
     override = os.environ.get("CVAUTH_CONFIG_DIR")
@@ -42,24 +183,14 @@ def default_config_path() -> Path:
     return user_config_path()
 
 
-# ---------------------------------------------------------------------------
-# Template loading
-# ---------------------------------------------------------------------------
-
 def load_default_config() -> dict:
-    """
-    Load the bundled default TOML template as a dict.
-    """
+    """Load the bundled default TOML template as a dict."""
     try:
         text = Path(__file__).with_name(CONFIG_FILENAME).read_text()
     except FileNotFoundError:
         text = (files("cvauth") / CONFIG_FILENAME).read_text()
     return tomllib.loads(text)
 
-
-# ---------------------------------------------------------------------------
-# Dataclasses
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class IdentityConfig:
@@ -74,6 +205,11 @@ class KeysConfig:
 
 
 @dataclass(frozen=True)
+class CryptoConfig:
+    scheme: str
+
+
+@dataclass(frozen=True)
 class BehaviourConfig:
     allow_unsigned: bool = True
     allow_invalid_signatures: bool = True
@@ -81,13 +217,14 @@ class BehaviourConfig:
 
 @dataclass(frozen=True)
 class ConfigLocationConfig:
-    config_path: str  # always stored as STRING
+    config_path: str
 
 
 @dataclass(frozen=True)
 class CVAuthConfig:
     identity: IdentityConfig
     keys: KeysConfig
+    crypto: CryptoConfig
     behaviour: BehaviourConfig
     config_location: ConfigLocationConfig
 
@@ -102,16 +239,101 @@ class CVAuthConfig:
         if p.is_absolute():
             return p
         return (self.config_dir / p).resolve()
+        
+    def keypair_paths(self, scheme_name: str) -> tuple[Path, Path]:
+        """Return the private and public key paths for a crypto scheme."""
+        key_dir = self.config_dir / "keys" / scheme_name
+        return (
+            key_dir / "private.pem",
+            key_dir / "public.pem",
+        )
 
+    def trusted_key_path(self, callsign: str, scheme_name: str) -> Path:
+        """Return the scheme-aware path for a trusted public key."""
+        return (
+            self.config_dir
+            / "trusted_keys"
+            / callsign
+            / f"{scheme_name}.pem"
+        )
 
-# ---------------------------------------------------------------------------
-# Ensure config exists
-# ---------------------------------------------------------------------------
+    def resolve_keypair_paths(self, scheme_name: str) -> tuple[Path, Path]:
+        """Return the keypair paths for a scheme, preserving legacy keys.
+
+        The existing configured key paths are treated as the legacy/default
+        keypair. Scheme-specific keypairs are used for other schemes.
+        """
+        if scheme_name == DEFAULT_SCHEME:
+            private_path = self.resolve_path(self.keys.private_key)
+            public_path = self.resolve_path(self.keys.public_key)
+
+            if private_path is None or public_path is None:
+                raise ConfigError(
+                    "No legacy keypair paths are configured"
+                )
+
+            return private_path, public_path
+
+        return self.keypair_paths(scheme_name)
+
+    def resolve_trusted_key_path(
+        self,
+        callsign: str,
+        scheme_name: str,
+    ) -> Optional[Path]:
+        """Return the trusted public-key path for a station and scheme.
+
+        New scheme-aware paths take precedence over the existing legacy
+        callsign-only path.
+        """
+        callsign = callsign.upper()
+
+        # New scheme-aware location
+        scheme_path = self.trusted_key_path(callsign, scheme_name)
+        if scheme_path.exists():
+            return scheme_path
+
+        # Existing legacy location.
+        # Legacy trusted keys are assumed to use the default scheme.
+        if scheme_name == DEFAULT_SCHEME:
+            legacy_path = (
+                self.config_dir
+                / "trusted_keys"
+                / f"{callsign}.pem"
+            )
+            if legacy_path.exists():
+                return legacy_path
+
+        return None
+
+def _merge_with_defaults(user_data: dict) -> dict:
+    """Merge user config with defaults from template.
+
+    For any missing top-level section or missing keys within a section,
+    use the values from the bundled default TOML file.
+    This ensures upgrades and new installs both use the template as truth.
+    """
+    defaults = load_default_config().get("cvauth", {})
+    user_cvauth = user_data.get("cvauth", {})
+
+    # Start with defaults, then overlay user values
+    merged = {}
+    for section in defaults.keys():
+        if isinstance(defaults[section], dict):
+            # Section is a nested dict: merge key-by-key
+            merged[section] = {**defaults[section], **user_cvauth.get(section, {})}
+        else:
+            # Scalar value: use user value if present, else default
+            merged[section] = user_cvauth.get(section, defaults[section])
+
+    return {"cvauth": merged}
+
 
 def ensure_config() -> Path:
-    """
-    Ensure config directory and config file exist.
+    """Ensure the configuration file exists.
+
     Writes the template verbatim on first run.
+    Existing files are left untouched (upgrade happens on load).
     """
     config_path = user_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,17 +347,16 @@ def ensure_config() -> Path:
     return config_path
 
 
-# ---------------------------------------------------------------------------
-# Load config
-# ---------------------------------------------------------------------------
-
 def load_config(path: Optional[Path] = None) -> CVAuthConfig:
-    """
-    Load CVAuth configuration.
+    """Load CVAuth configuration with automatic upgrade from template defaults.
+
     Path resolution rules:
       1. Explicit path argument (highest priority)
       2. config_location.config_path from file (if non-empty)
       3. default_config_path()
+
+    Missing keys are backfilled from the bundled default TOML template,
+    ensuring new settings are automatically added on upgrade.
     """
     load_path = path or default_config_path()
 
@@ -143,17 +364,17 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
         raise ConfigError(f"Config file not found: {load_path}")
 
     try:
-        data = tomllib.loads(load_path.read_text())
+        user_data = tomllib.loads(load_path.read_text())
     except Exception as e:
         raise ConfigError(f"Failed to parse config: {e}") from e
 
-    if "cvauth" not in data:
-        raise ConfigError("Missing [cvauth] section in config")
-
-    data = data["cvauth"]
+    # Merge user config with defaults from template
+    merged_data = _merge_with_defaults(user_data)
+    data = merged_data["cvauth"]
 
     identity_section = data.get("identity", {})
     keys_section = data.get("keys", {})
+    crypto_section = data.get("crypto", {})
     behaviour_section = data.get("behaviour", {})
     config_location_section = data.get("config_location", {})
 
@@ -167,11 +388,17 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
         public_key=keys_section.get("public_key"),
     )
 
+    #crypto = CryptoConfig(
+    #    scheme=crypto_section.get("scheme", ""),
+    #)
+
+    crypto = CryptoConfig(
+        scheme=crypto_section.get("scheme") or DEFAULT_SCHEME,
+    )
+    
     behaviour = BehaviourConfig(
         allow_unsigned=behaviour_section.get("allow_unsigned", True),
-        allow_invalid_signatures=behaviour_section.get(
-            "allow_invalid_signatures", True
-        ),
+        allow_invalid_signatures=behaviour_section.get("allow_invalid_signatures", True),
     )
 
     raw_config_path = config_location_section.get("config_path")
@@ -179,68 +406,61 @@ def load_config(path: Optional[Path] = None) -> CVAuthConfig:
     if path is not None:
         final_config_path = str(load_path)
     elif isinstance(raw_config_path, str) and raw_config_path.strip():
-        final_config_path = str(
-            Path(raw_config_path).expanduser().resolve()
-        )
+        final_config_path = str(Path(raw_config_path).expanduser().resolve())
     else:
         final_config_path = str(default_config_path())
 
-    config_location = ConfigLocationConfig(
-        config_path=final_config_path
-    )
+    config_location = ConfigLocationConfig(config_path=final_config_path)
 
     return CVAuthConfig(
         identity=identity,
         keys=keys,
+        crypto=crypto,
         behaviour=behaviour,
         config_location=config_location,
     )
 
 
-# ---------------------------------------------------------------------------
-# Update config value
-# ---------------------------------------------------------------------------
+def update_config_value(config: CVAuthConfig, attr_path: str, value) -> CVAuthConfig:
+    """Update a config value and write back to disk.
 
-def update_config_value(
-    config: CVAuthConfig,
-    attr_path: str,
-    value
-) -> CVAuthConfig:
-    """
-    Update a config value and write back to disk.
-    attr_path example: "identity.callsign"
+    Args:
+        config: Current CVAuthConfig instance
+        attr_path: Dot-separated path like "identity.callsign" or "crypto.scheme"
+        value: The value to set
+
+    Returns:
+        Updated CVAuthConfig with the change persisted to disk
     """
     parts = attr_path.split(".")
     if len(parts) != 2:
         raise ValueError("attr_path must be section.field")
 
     section, field = parts
-
     current = config
 
     if section == "identity":
         updated = replace(config.identity, **{field: value})
         current = replace(config, identity=updated)
-
     elif section == "keys":
         updated = replace(config.keys, **{field: value})
         current = replace(config, keys=updated)
-
+    elif section == "crypto":
+        updated = replace(config.crypto, **{field: value})
+        current = replace(config, crypto=updated)
     elif section == "behaviour":
         updated = replace(config.behaviour, **{field: value})
         current = replace(config, behaviour=updated)
-
     elif section == "config_location":
         updated = replace(config.config_location, **{field: value})
         current = replace(config, config_location=updated)
-
     else:
         raise ValueError(f"Unknown config section: {section}")
 
     config_path = current.config_location.config_path
-    config_dict = asdict(current)
+    config_dict = {"cvauth": asdict(current)}
 
     with Path(config_path).open("wb") as f:
-        tomli_w.dump({"cvauth": config_dict}, f)
+        tomli_w.dump(config_dict, f)
 
     return current

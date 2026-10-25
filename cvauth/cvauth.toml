@@ -13,7 +13,7 @@ public_key  = "keys/public.pem"
 trusted_keys_dir = "trusted_keys"
 
 [cvauth.crypto]
-scheme = ""
+scheme = "ed25519"
 
 [cvauth.behaviour]
 allow_unsigned = true
