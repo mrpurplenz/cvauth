@@ -343,10 +343,14 @@ def run_tui(
                         #    state.scroll_offset + 1,
                         #    max(0, len(state.messages) - state.body_y)
                         #)
-                        wrapped = get_wrapped_lines(state.messages,term.width)
-                        total = len(wrapped)
-                        max_scroll = max(0, len(wrapped) - state.body_y)
+                        total = len(state.display_lines)
+                        max_scroll = max(0, total - state.body_y)
                         state.scroll_offset = min(state.scroll_offset + 1, max_scroll)
+
+                        #wrapped = get_wrapped_lines(state.messages,term.width)
+                        #total = len(wrapped)
+                        #max_scroll = max(0, len(wrapped) - state.body_y)
+                        #state.scroll_offset = min(state.scroll_offset + 1, max_scroll)
                         #state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
                     # Scroll down (wheel down)
                     elif key.name == "MOUSE_SCROLL_DOWN":
