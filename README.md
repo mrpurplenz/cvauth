@@ -108,6 +108,7 @@ cvauth-tui
 
 To update we can uninstall and reinstall
 ```bash
+source ~/cvauth/cvenv/bin/activate
 pip uninstall "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
 pip install "cvauth @ git+https://github.com/mrpurplenz/cvauth.git@main"
 ```
