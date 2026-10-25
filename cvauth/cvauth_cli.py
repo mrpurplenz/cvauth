@@ -170,10 +170,11 @@ def main(argv: list[str] | None = None) -> int:
     p_config = sub.add_parser("config", help="Display the current configuration")
     p_config.set_defaults(func=cmd_config)
 
-    args = parser.parse_args(argv)
-
-    args.func(args)
     p_add = sub.add_parser("add",help="Add a trusted public key",)
     p_add.add_argument("path",help="Path to the public-key file",)
     p_add.set_defaults(func=cmd_add)
+
+    args = parser.parse_args(argv)
+
+    args.func(args)
     return 0

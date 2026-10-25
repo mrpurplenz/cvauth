@@ -31,3 +31,10 @@ def station2call(station: str) -> str:
         station = station.split("-", 1)[0]
 
     return station
+
+def call_from_station(station: str) -> str:
+    """
+    Simple wrapper for station2call
+    """
+    return station2call(station)
+    
