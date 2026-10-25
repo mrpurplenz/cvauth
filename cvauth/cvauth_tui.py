@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-import queue
-import time
-import signal
+#import queue
+#import time
+import queue, time, signal, textwrap
 from blessed import Terminal
 from textwrap import wrap
 import pe.app
@@ -40,7 +40,7 @@ class LocalKeyring:
     def get_public_keys(self, callsign: str):
         if self.state.verbose:
             callsign = station2call(callsign.upper())
-            self.state.messages.append(
+            self.state.add_message(
                 f"looking for trusted keys for {callsign}"
             )
 
@@ -57,7 +57,7 @@ class depr_LocalKeyring:
         from cvauth.auth import load_public_key
         callsign = station2call(station.upper())
         if self.state.verbose:
-            self.state.messages.append(f"looking for key at {self.public_key_dir}/{callsign}.pem")
+            self.state.add_message(f"looking for key at {self.public_key_dir}/{callsign}.pem")
 
         key_file = self.public_key_dir / f"{callsign}.pem"
 
@@ -99,6 +99,9 @@ class UIState:
         self.signing = signing
         self.scheme = None
         self.messages = []      # list[str]
+        self.display_lines = []
+        self.display_width_dirty = True
+        self.display_window = []
         self.input_buffer = ""
         self.config = None
         self.private_key_path = None
@@ -113,15 +116,45 @@ class UIState:
         self.body_y = 0
         self.disp_height = 0
         self.disp_width = 0
-        
+
+    def add_message(self, message):
+        """Add one message to the message history."""
+        self.messages.append(message)
+        self.display_lines.extend(self.wrap_message(message))
+
+    def add_messages(self, messages):
+        """Add multiple messages through the same message-management path."""
+        for message in messages:
+            self.add_message(message)
+
+    def wrap_message(self, message, width=None):
+        """Wrap one message into display lines."""
+        if width is None:
+            width = self.disp_width
+
+        if width <= 0:
+            return []
+
+        return textwrap.wrap(message, width)
+
+    def rebuild_display_lines(self):
+        """Rebuild cached display lines using the current display width."""
+        self.display_lines = []
+        for message in self.messages:
+            self.display_lines.extend(
+                self.wrap_message(message, self.disp_width)
+            )
+        self.display_width_dirty = False
+
+
 # =====================
 # RENDER
 # =====================
-def get_wrapped_lines(messages, width):
-    wrapped = []
-    for msg in messages:
-        wrapped.extend(wrap(msg, width))
-    return wrapped
+#def get_wrapped_lines(messages, width):
+#    wrapped = []
+#    for msg in messages:
+#        wrapped.extend(wrap(msg, width))
+#    return wrapped
 
 def render(term: Terminal, state: UIState):
     print(term.home + term.clear ,end="")
@@ -186,9 +219,12 @@ def render(term: Terminal, state: UIState):
         + term.normal
     )
     # ----- Message area -----
+    if state.display_width_dirty:
+        state.rebuild_display_lines()
 
-    wrapped = get_wrapped_lines(state.messages,width)
-    total = len(wrapped)
+    #wrapped = get_wrapped_lines(state.messages,width)
+    #total = len(wrapped)
+    total = len(state.display_lines)
     body_height = state.body_y
 
     max_scroll = max(0, total - body_height)
@@ -199,8 +235,10 @@ def render(term: Terminal, state: UIState):
     start = max(0, start)
     end = start + body_height
 
-    visible_msgs = wrapped[start:end]
-    
+    #visible_msgs = wrapped[start:end]
+    visible_msgs = state.display_lines[start:end]
+
+
     for i, msg in enumerate(visible_msgs):
         line_no =  HEADER_Y + i
 
@@ -282,23 +320,25 @@ def run_tui(
         render(term, state)
         while state.running:
             dirty = False
-            
+
             # ---- Check for resize ----
             if state.disp_height != term.height or state.disp_width != term.width:
+                if state.disp_width != term.width:
+                    state.display_width_dirty = True
                 state.disp_height = term.height
                 state.disp_width = term.width
                 dirty = True
-                
+
             # ---- Keyboard input (non-blocking) ----
             key = term.inkey(timeout=0)
             if key:
                 dirty = True
-                
+
                 if key.name and key.name.startswith("MOUSE_"):
-                    
+
 		    # Scroll up (wheel up)
                     if key.name == "MOUSE_SCROLL_UP":
-                        #state.messages.extend(str(state.body_y))
+                        #state.add_messages(str(state.body_y))
                         #state.scroll_offset = min(
                         #    state.scroll_offset + 1,
                         #    max(0, len(state.messages) - state.body_y)
@@ -310,7 +350,7 @@ def run_tui(
                         #state.scroll_offset = min(max(0, len(state.messages) - state.body_y),state.scroll_offset+1)
                     # Scroll down (wheel down)
                     elif key.name == "MOUSE_SCROLL_DOWN":
-                        #state.messages.extend("MOUSE_SCROLL_DOWN")
+                        #state.add_messages("MOUSE_SCROLL_DOWN")
                         #state.scroll_offset = max(
                 	#    state.scroll_offset - 1,
                 	#    0
@@ -345,11 +385,11 @@ def run_tui(
                 if is_netrom_nodes_packet(call_to, payload):
                     netrom_data = decode_netrom_nodes(payload)
                     if netrom_data:
-                        #state.messages.extend("[system detected NET/ROM data]")
+                        #state.add_messages("[system detected NET/ROM data]")
                         #state.node_data[call_from] = netrom_data  # overwrite per sender
                         update_netrom_nodes(state, netrom_data['sender'], netrom_data) #add and update per sender
                         formatted_lines = format_netrom_summary(netrom_data)
-                        state.messages.extend(formatted_lines)
+                        state.add_messages(formatted_lines)
 
 
                         continue  # Skip CVAuth + text decode
@@ -382,10 +422,10 @@ def run_tui(
                         msg_colour = term.orange
                 RXheader = "[RX]"
                 if state.verbose:
-                    state.messages.append(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}, call {evt['from']}, signer {result['signer']}, Auth status: {result['auth_status']}")
-                    state.messages.append(f"[received bytes from pyham_pe: {bytes_to_hex_escape(evt['data'])}]")
+                    state.add_message(f"[packet received: ChatterVox Magic bytes set: {result['is_CV']}, ChatterVox version: {result['version']}, Signed: {result['signed']}, Compressed: {result['compressed']}, call {evt['from']}, signer {result['signer']}, Auth status: {result['auth_status']}")
+                    state.add_message(f"[received bytes from pyham_pe: {bytes_to_hex_escape(evt['data'])}]")
                     RXheader = f"[RX {result['reason']}]"
-                state.messages.append(
+                state.add_message(
                     msg_colour +
                     RXheader +
                     f" {evt['from']} → {evt['to']}: {text}"
@@ -405,44 +445,44 @@ def run_tui(
 
 def cmd_quit(args, state):
     state.running = False
-    state.messages.append("[system] Exiting.")
+    state.add_message("[system] Exiting.")
     return True
 
 def cmd_help(args, state):
     if not args:
-        state.messages.append("[system] Available commands:")
+        state.add_message("[system] Available commands:")
         for name, meta in COMMANDS.items():
-            state.messages.append(
+            state.add_message(
                 f"[system] /{name:<8} - {meta['help']}"
             )
         return True
 
     cmd = COMMANDS.get(args[0])
     if not cmd:
-        state.messages.append(
+        state.add_message(
             "f[error] No such command: /{args[0]}"
         )
         return True
 
-    #state.messages.append(f"[system] Usage: {cmd['usage']}")
+    #state.add_message(f"[system] Usage: {cmd['usage']}")
 
     for line in cmd["help"].splitlines():
-        state.messages.append("[system] " + line)
+        state.add_message("[system] " + line)
     for line in cmd["usage"].splitlines():
-        state.messages.append("[system] " + line)
-    #state.messages.append(f"[system] " + cmd["help"])
+        state.add_message("[system] " + line)
+    #state.add_message(f"[system] " + cmd["help"])
     return True
 
 def cmd_sign(args, state):
     new_signing = not(state.signing)
     state.signing = new_signing
-    state.messages.append(f"[system] Signing toggled to {new_signing}")
+    state.add_message(f"[system] Signing toggled to {new_signing}")
     return True
 
 def cmd_verbose(args, state):
     new_verbose = not(state.verbose)
     state.verbose = new_verbose
-    state.messages.append(f"[system] Verbose validity reason toggled to {new_verbose}")
+    state.add_message(f"[system] Verbose validity reason toggled to {new_verbose}")
     return True
 
 def cmd_filter(args, state):
@@ -456,31 +496,31 @@ def cmd_status(args, state):
     """Display application status at the requested detail level."""
 
     if len(args) > 1:
-        state.messages.append("[system] Usage: /status [1|2|3]")
+        state.add_message("[system] Usage: /status [1|2|3]")
         return True
 
     try:
         level = int(args[0]) if args else 1
     except ValueError:
-        state.messages.append(
+        state.add_message(
             "[error] Invalid verbosity. Use /status [1|2|3]"
         )
         return True
 
     if level not in (1, 2, 3):
-        state.messages.append(
+        state.add_message(
             "[error] Invalid verbosity. Use /status [1|2|3]"
         )
         return True
 
     def add(label, value):
-        state.messages.append(f"[system] {label:<22} {value}")
+        state.add_message(f"[system] {label:<22} {value}")
 
     def enabled(value):
         return "Enabled" if value else "Disabled"
 
-    state.messages.append("[system] CVAuth application status")
-    state.messages.append("[system] " + "-" * 46)
+    state.add_message("[system] CVAuth application status")
+    state.add_message("[system] " + "-" * 46)
 
     # Level 1: operational status.
     add("Callsign:", state.callsign)
@@ -492,9 +532,9 @@ def cmd_status(args, state):
     add("NET/ROM nodes:", len(state.netrom_nodes))
 
     if level >= 2:
-        state.messages.append("[system] ")
-        state.messages.append("[system] Configuration and keys")
-        state.messages.append("[system] " + "-" * 46)
+        state.add_message("[system] ")
+        state.add_message("[system] Configuration and keys")
+        state.add_message("[system] " + "-" * 46)
 
         config = state.config
 
@@ -545,9 +585,9 @@ def cmd_status(args, state):
         )
 
     if level >= 3:
-        state.messages.append("[system] ")
-        state.messages.append("[system] Runtime diagnostics")
-        state.messages.append("[system] " + "-" * 46)
+        state.add_message("[system] ")
+        state.add_message("[system] Runtime diagnostics")
+        state.add_message("[system] " + "-" * 46)
 
         add("Running:", enabled(state.running))
         add("UI app:", type(state.app).__name__ if state.app else "Not initialised")
@@ -563,7 +603,7 @@ def cmd_status(args, state):
         add("Body Y position:", state.body_y)
         add("Input buffer length:", len(state.input_buffer))
 
-    state.messages.append(
+    state.add_message(
         f"[system] Status report complete (detail level {level})."
     )
     return True
@@ -592,9 +632,9 @@ def cmd_destination(args, state):
         state.destination=dest
         return True
 
-    state.messages.append(f"[system] Destination must be either a valid call sign with optional ssid or one of")
+    state.add_message(f"[system] Destination must be either a valid call sign with optional ssid or one of")
     for valid_destination in VALID_ADHOC_DESTINATIONS:
-        state.messages.append(f"[system]     {valid_destination}")
+        state.add_message(f"[system]     {valid_destination}")
 
     return False
 
@@ -609,12 +649,12 @@ def cmd_netpoll(args, state):
     """
     app = state.app
     if not args:
-        state.messages.append("[system] Usage: /netpoll CALLSIGN")
+        state.add_message("[system] Usage: /netpoll CALLSIGN")
         return False
 
     target = args[0].strip().upper()
     if not valid_callsign(target):
-        state.messages.append(f"[system] Invalid callsign: {target}")
+        state.add_message(f"[system] Invalid callsign: {target}")
         return False
 
     # Construct an empty NET/ROM poll frame
@@ -626,7 +666,7 @@ def cmd_netpoll(args, state):
     call_from = f"{state.callsign}-{state.ssid}"
     call_to = target
 
-    state.messages.append(f"[TX] NET/ROM poll to {call_to} via {VIA if VIA else 'direct'}")
+    state.add_message(f"[TX] NET/ROM poll to {call_to} via {VIA if VIA else 'direct'}")
 
     # Send the unproto packet
     app.send_unproto(
@@ -642,7 +682,7 @@ def cmd_netpoll(args, state):
 def cmd_tables(args, state):
 
     if not hasattr(state, "netrom_nodes") or not state.netrom_nodes:
-        state.messages.append("[system] No NET/ROM node data available.")
+        state.add_message("[system] No NET/ROM node data available.")
         return True
 
     # If sender argument provided
@@ -650,7 +690,7 @@ def cmd_tables(args, state):
         sender = args[0].upper()
 
         if sender not in state.netrom_nodes:
-            state.messages.append(
+            state.add_message(
                 f"[error] No NET/ROM data for sender: {sender}"
             )
             return True
@@ -664,7 +704,7 @@ def cmd_tables(args, state):
         }
 
         formatted_lines = format_netrom_summary(netrom_data)
-        state.messages.extend(formatted_lines)
+        state.add_messages(formatted_lines)
         return True
 
     # No args → print all
@@ -679,7 +719,7 @@ def cmd_tables(args, state):
         }
 
         formatted_lines = format_netrom_summary(netrom_data)
-        state.messages.extend(formatted_lines)
+        state.add_messages(formatted_lines)
 
     return True
 
@@ -757,7 +797,7 @@ def dispatch_command(line, state):
     cmd = COMMANDS.get(cmd_name)
 
     if not cmd:
-        state.messages.append(
+        state.add_message(
             (f"[system] error Unknown command: /{cmd_name}")
         )
         return
@@ -765,7 +805,7 @@ def dispatch_command(line, state):
     try:
         cmd["handler"](args, state)
     except Exception as e:
-        state.messages.append(
+        state.add_message(
             (f"[system] error Command failed: {e}")
         )
 
@@ -1055,7 +1095,7 @@ def update_netrom_nodes(state, sender, netrom_data):
 
 def send_message(line, state, app, term):
     # Stub: later this will go through AX.25 / signing / etc
-    state.messages.append(f"[TX] {line}")
+    state.add_message(f"[TX] {line}")
 
     AX25_PORT = 0  #NEEDS MOVING TO STATE AND ULTIMATELY TO CONFIG
     VIA = []  # e.g. ["WIDE1-1", "WIDE2-1"] NEEDS MOVING TO STATE AND BE MUTABLE BY COMMAND
@@ -1067,8 +1107,8 @@ def send_message(line, state, app, term):
         signed_packet = sign_outgoing(line, state)
         reply_bytes = sign_outgoing(line, state).encode()
         if state.verbose:
-            state.messages.append(f"[packet sent: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}]")
-            state.messages.append(f"[packet bytes: {reply_bytes}, payload bytes:  {signed_packet.payload}")
+            state.add_message(f"[packet sent: ChatterVox Magic bytes set: {signed_packet.magic}, ChatterVox version: {signed_packet.version}, Signed: {signed_packet.signed}, Compressed: {signed_packet.compressed}]")
+            state.add_message(f"[packet bytes: {reply_bytes}, payload bytes:  {signed_packet.payload}")
     else:
         reply_bytes = line.encode('utf-8')
     
@@ -1098,9 +1138,9 @@ def scan_and_warn(reply_bytes: bytes, state, term):
     escaped_str = ''.join(escaped)
     
     if found_control:
-        state.messages.append("[WARNING] tx msg contains control characters that may be truncated in older software")
-        state.messages.append("[WARNING] please ensure Direwolf >=1.8.1")
-        state.messages.append(f"[TX bytes] {escaped_str}")
+        state.add_message("[WARNING] tx msg contains control characters that may be truncated in older software")
+        state.add_message("[WARNING] please ensure Direwolf >=1.8.1")
+        state.add_message(f"[TX bytes] {escaped_str}")
 
     
     return ''.join(f'\\x{b:02x}' for b in reply_bytes)  # return original hex-escaped string if needed
