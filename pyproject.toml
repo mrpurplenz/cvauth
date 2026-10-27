@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cvauth"
-version = "0.1.0"
+version = "0.2.0"
 description = "CVAuth: Chattervox authentication library and tools"
 authors = [
     { name = "Richard Edmonds", email = "mrpurple@gmail.com" }
